@@ -52,4 +52,12 @@ None right now. The next module spec (see ARCHITECTURE.md phases) will raise its
 | D-40 | Campaign = 7 calendar months from the start date (onboarding day, or first run of this version), editable in Settings | Claude | D-01 |
 | D-41 | Commander is not an alarm clock: tomorrow's wake order has a "Set alarm" button that opens the clock app pre-filled | Claude | The clock app is more reliable for waking than a notification |
 | D-42 | Reminders (planned for Phase 5) pulled forward ahead of Phase 3 at your request | You | — |
+| D-43 | Scope: everything Rise does that works offline and phone-only, plus Fuel (MacroFactor-style), Train (strength, triathlon, mobility) and a gut log, shipped as four releases | You | Cut: barcode scanning, AI food logging, sleep sounds, calendar sync and a smart alarm (no internet, no wearable) |
+| D-44 | 30-minute steps start from the earlier of the habitual (7-night median) time and last night's time | Claude | MODEL.md §9; without it, steps stalled for days in simulation |
+| D-45 | Morning report 1 h after habitual wake; detected nights saved unconfirmed until you confirm or fix them | Claude | MODEL.md §9 |
+| D-46 | No Hilt: one `AppContainer` built by `CommanderApplication` (replaces D-29) | Claude | Fewer moving parts; one user, a handful of screens |
+| D-47 | Health Connect deferred until there's a device that writes sleep to it | Claude | You have no wearable; phone detection plus confirmation covers it |
+| D-48 | Room for records (schemas exported to `app/schemas` so later releases migrate instead of wiping) | Claude | ARCHITECTURE.md |
+| D-49 | Ticking orders off is informational: a count for today, no streaks | Claude | Rules of command 7 |
+| D-50 | Alertness ratings (KSS 1–9) are collected now for curve calibration later | Claude | MODEL.md §5 |
 

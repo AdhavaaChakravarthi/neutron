@@ -19,7 +19,7 @@ Following every order for 7 months only works if no order can hurt you and every
 
 | Module | Status |
 |---|---|
-| Sleep and energy | v1, below. Builds are out: orders from your usual schedule, with reminders |
+| Sleep and energy | Built: real nights, debt, need learning, rhythm stats, morning report, reminders |
 | Training | Planned. Spec with sourced rules before any code |
 | Nutrition | Planned. Same |
 | Mobility | Planned. Same |
@@ -72,7 +72,15 @@ Notifications on one "Orders" channel, at the exact minute: up (with the light w
 - **Next nudge** with its time.
 - A text summary of the curve for TalkBack, e.g. "Groggy until 8:40 am. Peak 3:50 to 5:20 pm. Sleepy after 10:45 pm."
 
-### Morning check-in
+### Morning report (built)
+
+A card at the top of Today (and a notification 1 h after your usual wake) until last night is in: the night from phone use, or your usual times if nothing was found. Fix "asleep" and "up", say whether you woke without an alarm, confirm. "I didn't sleep" counts the night as zero.
+
+### Sleep tab (built)
+
+Debt with its band and a 14-day bar chart against your need; need (learned or manual); rhythm (usual times, regularity, social jetlag, chronotype); detection status; log a night or nap; history you can fix or delete.
+
+### Morning check-in (original plan)
 
 Opened from a notification about an hour after detected wake-up, or from Today if unanswered.
 

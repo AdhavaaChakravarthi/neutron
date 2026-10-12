@@ -110,6 +110,32 @@ Implemented in `plan_day` / `plan_for_schedule` (Python) and `planDay` / `planFo
 
 `python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
 
+## 9. Real nights
+
+Implemented in the "Real nights" section of `commander_model.py` and in `model/.../History.kt`; golden vectors in `golden/history*.csv`.
+
+**Which nights.** One night per wake day: a recorded night if there is one (the longest, if several), otherwise a provisional night on your habitual schedule. Naps that overlap a night are ignored. With no recorded nights the plan is identical to the schedule-only plan in §7 (tested).
+
+**Habitual times.** Median sleep onset and median wake of the last 7 recorded nights, with onsets compared as hours after noon so 23:30 and 00:30 sit together. Fewer than 3 recorded nights: your stated usual schedule (**ASSUMPTION** for 7 and 3).
+
+**Where the 30-minute steps start.** The earlier of the habitual time and last night's time, for both bedtime and wake. Following tonight's order moves tomorrow's plan on by another step. One late night can't drag the plan later, because the median stays put (**ASSUMPTION**, D-44). Without this, the steps stalled for days in simulation, because one earlier night barely moves a 7-night median.
+
+**Daily sleep and debt.** Total sleep per wake day: nights plus naps that end that day. A "didn't sleep" mark counts as 0. Days with no data are left out, not counted as 0. Debt is the §4 formula over the 14 most recent days with data.
+
+**Sleep need from history.** A night qualifies when you woke without an alarm and the debt before it (against the 8 h prior) was under 2 h. The estimate is the §3 shrinkage toward 8 h. You can switch to a manual value in Settings.
+
+**Sleep Regularity Index.** 200 × P(same state 24 h apart) − 100, compared across consecutive recorded wake days in noon-to-noon windows at 5-minute resolution. Needs at least 3 such pairs. This follows the definition in Phillips et al. 2017 [17]: the chance of being in the same state (asleep or awake) 24 h apart, scaled so a perfectly regular sleeper scores 100 and a random one 0. The scaling formula is written from that verified definition; I could not read the paper's equation directly.
+
+**Social jetlag.** |median mid-sleep before free days − median mid-sleep before workdays| (Wittmann et al. 2006 [18]). A free night is one that ends on a free day (Saturday and Sunday by default, editable). Needs 2 free nights and 3 work nights.
+
+**Chronotype (MSFsc).** Mid-sleep on free days, corrected for catch-up sleep: MSFsc = MSF if SDf ≤ SDw, else MSF − (SDf − SDweek)/2, where SDweek = (SDw·WD + SDf·FD)/7 [19]. Not available when most free nights ended with an alarm, matching the MCTQ rule.
+
+**Phone detection in practice.** The morning report fires 1 h after habitual wake (**ASSUMPTION**). It reads screen-on times in the §6 window, runs the detector and saves the result as unconfirmed. Your confirmation (or edit) is final. Detection is skipped when the rest period touches the end of the available data, so a lie-in isn't cut short.
+
+**Nap order.** Shown when debt is at least 2 h: up to 20 minutes, ending by the caffeine cutoff. A 10-minute nap was most effective and naps up to 30 min still helped after restricted sleep [20]. The 20-minute cap and the cutoff are **ASSUMPTIONS**.
+
+**Exercise timing.** The wind-down order adds "no hard training from now". In a meta-analysis evening exercise did not harm sleep overall, but vigorous exercise ending ≤ 1 h before bedtime might [21].
+
 ---
 
 ## Sources
@@ -131,3 +157,9 @@ Retrieved and checked during Phase 1 unless marked. † = the paper and its find
 13. Cuttone A, Bækgaard P, Sekara V, Jonsson H, Larsen JE, Lehmann S. SensibleSleep: a Bayesian model for learning sleep patterns from smartphone events. *PLOS ONE*. 2017;12(1):e0169901. doi:10.1371/journal.pone.0169901 †
 14. McCauley P, Kalachev LV, Smith AD, Belenky G, Dinges DF, Van Dongen HPA. A new mathematical model for the homeostatic effects of sleep loss on neurobehavioral performance. *Journal of Theoretical Biology*. 2009;256(2):227–239. doi:10.1016/j.jtbi.2008.09.012
 15. Rajdev P, Thorsley D, Rajaraman S, Rupp TL, Wesensten NJ, Balkin TJ, Reifman J. A unified mathematical model to quantify performance impairment for both chronic sleep restriction and total sleep deprivation. *Journal of Theoretical Biology*. 2013;331:66–77. doi:10.1016/j.jtbi.2013.04.013
+17. Phillips AJK, Clerx WM, O'Brien CS, et al. Irregular sleep/wake patterns are associated with poorer academic performance and delayed circadian and sleep/wake timing. *Scientific Reports*. 2017;7:3216. doi:10.1038/s41598-017-03171-4 † (definition checked via two papers that cite it; the article number and DOI are from memory)
+18. Wittmann M, Dinich J, Merrow M, Roenneberg T. Social jetlag: misalignment of biological and social time. *Chronobiology International*. 2006;23(1–2):497–509. † (the definition matches the MCTQ documentation; bibliographic detail from memory)
+19. Roenneberg T, Wirz-Justice A, Merrow M. Life between clocks: daily temporal patterns of human chronotypes. *Journal of Biological Rhythms*. 2003;18(1):80–90; and Roenneberg T, Allebrandt KV, Merrow M, Vetter C. Social jetlag and obesity. *Current Biology*. 2012;22(10):939–943. (Formula as given in the `mctq` R package documentation.)
+20. Brooks A, Lack L. A brief afternoon nap following nocturnal sleep restriction: which nap duration is most recuperative? *Sleep*. 2006;29(6):831–840. ‡ (finding checked via a secondary summary; citation details from memory)
+21. Stutz J, Eiholzer R, Spengler CM. Effects of evening exercise on sleep in healthy participants: a systematic review and meta-analysis. *Sports Medicine*. 2019;49(2):269–287. doi:10.1007/s40279-018-1015-0 (abstract checked; author names from memory)
+

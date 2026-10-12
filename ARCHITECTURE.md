@@ -87,9 +87,10 @@ Each phase ends with tests run, a pass/fail report, known gaps listed, and a sto
 |---|---|
 | 1. Spec ✓ | SPEC, MODEL, ARCHITECTURE, DECISIONS, Python reference model and checks |
 | 2. Model + first app ✓ | Gradle project, CI with APK releases, `:model` in Kotlin matching the golden vectors, daily orders, and an installable app: onboarding, today's orders with energy chart, settings, rules and sources |
-| 3. Data | Room + migrations, usage-events source, Health Connect source, detection pipeline, manual entry. First check on your phone: does the detector see your nights? |
-| 4. Sleep + check-in | Debt on Today, 14-night history, editing, morning check-in; usual schedule updates from real nights so the 30-min steps progress |
+| 3. Real nights ✓ | Room, phone-use detection, morning report, sleep tab, need learning, rhythm stats, naps, ticks, ratings. Health Connect deferred (D-47) |
+| 4. Fuel | Food log on the USDA database, custom foods and recipes, weight trend, adaptive expenditure, targets, weekly check-in |
 | 5. Reminders + HUD ✓ (pulled forward, D-42) | Exact-alarm reminders, receivers, permission flow, per-order toggles, test order, set-alarm; HUD redesign |
 | 6. Calibration + hardening | KSS fit, export/import, crash log, accessibility pass, DST/travel tests |
 | 7. Two-week trial | You use it; we compare detected vs. confirmed nights and curve vs. your ratings, then fix what's off |
-| 8+. Next modules | Training, nutrition, mobility, gut log, one at a time. Each repeats the pattern: research and spec with sourced rules → model in `:model` with tests → screens and orders. Order of modules to be decided |
+| 8. Train | Strength logging and progression, triathlon load and race phases, mobility routines |
+| 9. Gut log | Stool type, symptoms, patterns against food |
