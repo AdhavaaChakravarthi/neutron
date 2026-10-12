@@ -68,7 +68,7 @@ fun buildOrders(o: TodayOrders, fmt: (LocalDateTime) -> String): List<Order> {
             if (o.bedStepLimited) {
                 "Moving 30 min earlier each night toward ${fmt(o.idealLightsOut)}."
             } else {
-                "That gives you your $need before ${fmt(o.nextWake)}."
+                "That's your $need before ${fmt(o.nextWake)}."
             },
             "Your sleep need ($need) plus 15 min to fall asleep, counted back from your wake time" +
                 (if (o.debtH >= 2.0) ", plus extra for sleep debt" else "") + ". " +
@@ -82,7 +82,8 @@ fun buildOrders(o: TodayOrders, fmt: (LocalDateTime) -> String): List<Order> {
                 o.nextWake.toLocalTime() == o.wake.toLocalTime() -> "Same time as today."
                 else -> "Your target wake time."
             },
-            "Your wake time also moves at most 30 min a day, so your body clock can keep up.",
+            "Your wake time also moves at most 30 min a day, so changes stay gradual. The 30 min is a cautious " +
+                "choice, not a measured limit.",
         ),
     )
     o.dipAt?.let {

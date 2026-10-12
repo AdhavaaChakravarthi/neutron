@@ -30,7 +30,8 @@ import java.time.LocalTime
 private val RULES = listOf(
     "Every order comes from published sleep research and tells you why.",
     "Bedtime aims for your full sleep need.",
-    "Your schedule moves at most 30 minutes a day. Your body clock can't shift faster than that.",
+    "Your schedule moves at most 30 minutes a day, so changes stay gradual. (The 30 minutes is a cautious " +
+        "choice, not a measured limit.)",
     "Estimates are labelled as estimates.",
     "You report back and Commander adjusts. When its prediction doesn't match how you feel, the plan " +
         "changes, not you. (Morning check-ins arrive in a later update.)",

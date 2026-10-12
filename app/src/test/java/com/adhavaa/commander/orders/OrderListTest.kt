@@ -44,7 +44,7 @@ class OrderListTest {
     fun steadyLightsOutStatesTheNeed() {
         val lightsOut = buildOrders(steady, fmt).first { it.kind == OrderKind.LIGHTS_OUT }
         assertEquals("23:15", fmt(lightsOut.at))
-        assertTrue(lightsOut.detail, lightsOut.detail.contains("8 h before 07:30"))
+        assertTrue(lightsOut.detail, lightsOut.detail.contains("your 8 h before 07:30"))
     }
 
     @Test

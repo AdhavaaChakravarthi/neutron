@@ -60,9 +60,13 @@ fun EnergyChart(orders: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) ->
             val start = orders.wake
             val end = orders.lightsOut
             val totalMin = Duration.between(start, end).toMinutes().toFloat().coerceAtLeast(1f)
-            val labelBand = 20.dp.toPx()
-            val plotH = size.height - labelBand
             val w = size.width
+            // Size the label band and the tick spacing from a real label, so large text never overlaps.
+            val sample = measurer.measure(AnnotatedString(fmt(start.withHour(12).withMinute(0))), style = labelStyle)
+            val labelBand = sample.size.height + 8.dp.toPx()
+            val plotH = size.height - labelBand
+            val pxPerHour = w / (totalMin / 60f)
+            val stepH = listOf(3, 4, 6, 8, 12).firstOrNull { it * pxPerHour >= sample.size.width + 12.dp.toPx() } ?: 12
 
             fun x(t: LocalDateTime): Float =
                 (Duration.between(start, t).toMinutes() / totalMin).coerceIn(0f, 1f) * w
@@ -108,7 +112,7 @@ fun EnergyChart(orders: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) ->
 
             var tick = start.truncatedTo(ChronoUnit.HOURS).plusHours(1)
             while (!tick.isAfter(end)) {
-                if (tick.hour % 3 == 0) {
+                if (tick.hour % stepH == 0) {
                     val layout = measurer.measure(AnnotatedString(fmt(tick)), style = labelStyle)
                     val lx = (x(tick) - layout.size.width / 2f).coerceIn(0f, (w - layout.size.width).coerceAtLeast(0f))
                     drawLine(cs.outline, Offset(x(tick), plotH), Offset(x(tick), plotH + 3.dp.toPx()), 1.dp.toPx())

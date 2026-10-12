@@ -24,11 +24,16 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.adhavaa.commander.UiState
 import com.adhavaa.commander.orders.Order
@@ -44,6 +49,14 @@ fun TodayScreen(state: UiState.Ready, onOpenSettings: () -> Unit) {
     val fmt = rememberTimeFormatter()
     val orders = state.orders
     val list = buildOrders(orders, fmt)
+    // The time column is as wide as the widest time in the current font size, so times never wrap.
+    val measurer = rememberTextMeasurer()
+    val timeStyle = MaterialTheme.typography.titleMedium
+    val density = LocalDensity.current
+    val timeWidth = remember(fmt, timeStyle, density) {
+        val widest = measurer.measure(AnnotatedString("–" + fmt(LocalDateTime.of(2026, 1, 1, 12, 55))), style = timeStyle)
+        with(density) { widest.size.width.toDp() } + 16.dp
+    }
 
     Scaffold(
         topBar = {
@@ -82,7 +95,10 @@ fun TodayScreen(state: UiState.Ready, onOpenSettings: () -> Unit) {
                 }
             }
             items(list, key = { it.kind.name }) { order ->
-                OrderRow(order, fmt, isPast = order.at.isBefore(state.now) && (order.until?.isBefore(state.now) ?: true))
+                OrderRow(
+                    order, fmt, timeWidth,
+                    isPast = order.at.isBefore(state.now) && (order.until?.isBefore(state.now) ?: true),
+                )
             }
             item {
                 HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -98,7 +114,7 @@ fun TodayScreen(state: UiState.Ready, onOpenSettings: () -> Unit) {
 }
 
 @Composable
-private fun OrderRow(order: Order, fmt: (LocalDateTime) -> String, isPast: Boolean) {
+private fun OrderRow(order: Order, fmt: (LocalDateTime) -> String, timeWidth: Dp, isPast: Boolean) {
     var open by rememberSaveable(order.kind) { mutableStateOf(false) }
     val dim = if (isPast) 0.55f else 1f
     val ink = MaterialTheme.colorScheme.onSurface.copy(alpha = dim)
@@ -114,16 +130,20 @@ private fun OrderRow(order: Order, fmt: (LocalDateTime) -> String, isPast: Boole
         Row {
             Text(
                 fmt(order.at) + (order.until?.let { "\n–" + fmt(it) } ?: ""),
-                modifier = Modifier.width(88.dp),
+                modifier = Modifier.width(timeWidth),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.primary.copy(alpha = dim),
+                softWrap = false,
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    order.title + if (order.estimate) "  · estimate" else "",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = ink,
-                )
+                Text(order.title, style = MaterialTheme.typography.titleMedium, color = ink)
+                if (order.estimate) {
+                    Text(
+                        "Estimate",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary.copy(alpha = dim),
+                    )
+                }
                 Text(order.detail, style = MaterialTheme.typography.bodyMedium, color = sub)
                 if (open) {
                     Text(
