@@ -1,3 +1,4 @@
+import java.time.Duration
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -60,7 +61,7 @@ android {
                 // Render tests write PNGs here; CI attaches them to the release.
                 test.systemProperty("screenshot.dir", project.layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
                 // A hung test fails the build instead of the job running for hours; the log names the last test started.
-                test.timeout.set(java.time.Duration.ofMinutes(20))
+                test.timeout.set(Duration.ofMinutes(20))
                 test.testLogging { events("started", "failed") }
             }
         }
