@@ -146,7 +146,7 @@ fun MobilityPlayer(
             }
             e?.let { ex ->
                 item {
-                    HudPanel(title = "How") {
+                    HudPanel(title = "How", subtitle = "Hold for the timer (${move.seconds} s), even if the steps give another time") {
                         ex.instructions.forEachIndexed { i, s -> Text("${i + 1}. $s", style = HudType.small, color = Hud.ink) }
                     }
                 }
