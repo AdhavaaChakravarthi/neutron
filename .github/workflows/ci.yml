@@ -38,7 +38,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Test, lint and build
-        run: ./gradlew --stacktrace :model:test :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew --stacktrace :model:test :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease 2>&1 | tee build.log
+
+      # Job logs aren't readable from the build workspace, so failures are also posted as annotations.
+      - name: Explain a failure
+        if: failure()
+        shell: bash
+        run: |
+          grep -E "^e: |What went wrong|> Task .* FAILED" build.log | head -8 | while IFS= read -r line; do echo "::error::${line}"; done
+          python3 - <<'EOF'
+          import glob, xml.etree.ElementTree as ET
+          out = []
+          for path in glob.glob("**/build/test-results/**/*.xml", recursive=True):
+              for tc in ET.parse(path).getroot().iter("testcase"):
+                  for f in tc.findall("failure") + tc.findall("error"):
+                      msg = (f.get("message") or f.text or "")[:400].replace("\n", " ")
+                      out.append(f"TEST {tc.get('classname')}.{tc.get('name')}: {msg}")
+          for path in glob.glob("app/build/reports/lint-results*.xml"):
+              for i in ET.parse(path).getroot().iter("issue"):
+                  if i.get("severity") in ("Error", "Fatal"):
+                      loc = i.find("location")
+                      where = f"{loc.get('file')}:{loc.get('line')}" if loc is not None else ""
+                      out.append(f"LINT {i.get('id')}: {(i.get('message') or '')[:250]} at {where}")
+          for line in out[:40]:
+              print("::error::" + line)
+          EOF
 
       - name: Count tests
         id: tests
@@ -88,7 +115,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release create "v0.2.${{ github.run_number }}" "commander-${{ github.run_number }}.apk" app/build/screenshots/*.png \
+          gh release create "v0.2.${{ github.run_number }}" "commander-${{ github.run_number }}.apk" app/build/screenshots/*.png app/schemas/*/*.json \
             --target "${{ github.sha }}" \
             --title "Commander 0.2.${{ github.run_number }}" \
             --notes "Built from ${{ github.sha }}. ${{ steps.tests.outputs.summary }}. No network permission. On your phone: download the APK, open it, allow the install."

@@ -51,8 +51,9 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 private val RULES = listOf(
-    "Every order comes from published sleep research and tells you why.",
-    "Bedtime aims for your full sleep need.",
+    "Every order comes from published research and tells you why.",
+    "Bedtime aims for your full sleep need. Food targets never go below your resting energy, and weight loss is " +
+        "capped at 1% of body weight a week.",
     "Your schedule moves at most 30 minutes a day, so changes stay gradual. (The 30 minutes is a cautious " +
         "choice, not a measured limit.)",
     "Estimates are labelled as estimates.",
@@ -75,6 +76,18 @@ private val SOURCES = listOf(
     "Monterastelli AJ, et al. The forbidden zone for sleep is more robust in adolescents compared to adults. " +
         "Front Sleep 2024.",
     "Khalsa SBS, et al. A phase response curve to single bright light pulses in human subjects. J Physiol 2003.",
+    "Mifflin MD, St Jeor ST, et al. A new predictive equation for resting energy expenditure in healthy " +
+        "individuals. Am J Clin Nutr 1990.",
+    "FAO/WHO/UNU. Human energy requirements. Expert consultation, 2001.",
+    "Hall KD. What is the required energy deficit per unit weight loss? Int J Obes 2008.",
+    "Walker J. The Hacker's Diet (10% exponentially smoothed trend).",
+    "Helms ER, Aragon AA, Fitschen PJ. Evidence-based recommendations for natural bodybuilding contest " +
+        "preparation: nutrition and supplementation. J Int Soc Sports Nutr 2014.",
+    "Morton RW, et al. Protein supplementation and resistance training-induced gains in muscle mass and " +
+        "strength: meta-analysis. Br J Sports Med 2018.",
+    "Institute of Medicine. Dietary Reference Intakes for energy and macronutrients. 2005.",
+    "Burke LM, Hawley JA, Wong SHS, Jeukendrup AE. Carbohydrates for training and competition. J Sports Sci 2011.",
+    "USDA ARS. National Nutrient Database for Standard Reference, Legacy (food data).",
 )
 
 @Immutable

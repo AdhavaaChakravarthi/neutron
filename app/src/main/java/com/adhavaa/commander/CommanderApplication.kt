@@ -2,6 +2,8 @@ package com.adhavaa.commander
 
 import android.app.Application
 import android.content.Context
+import com.adhavaa.commander.data.FoodCatalog
+import com.adhavaa.commander.data.FuelRepository
 import com.adhavaa.commander.data.SettingsStore
 import com.adhavaa.commander.data.SleepRepository
 import com.adhavaa.commander.data.db.CommanderDb
@@ -17,6 +19,8 @@ class AppContainer(context: Context) {
     val settings = SettingsStore(context)
     val db: CommanderDb = CommanderDb.open(context)
     val sleep = SleepRepository(db.dao())
+    val catalog: FoodCatalog = FoodCatalog.fromAssets(context)
+    val fuel = FuelRepository(db, catalog)
 
     suspend fun commandData(): CommandData =
         CommandData(settings.settings.first(), sleep.sleep().map { it.record }, sleep.skipped())

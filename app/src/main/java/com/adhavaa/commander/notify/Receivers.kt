@@ -36,6 +36,23 @@ class OrderReceiver : BroadcastReceiver() {
             }
             return
         }
+        if (kind == OrderKind.WEIGH_IN) {
+            // Already weighed in today: nothing to say.
+            runAsync(this, context) {
+                val today = LocalDateTime.ofInstant(Instant.ofEpochMilli(at), ZoneId.systemDefault()).toLocalDate()
+                if (late < STALE_MS && context.container().fuel.weightOn(today) == null) {
+                    OrderNotifier.post(
+                        context,
+                        OrderNotifier.idFor(kind),
+                        intent.getStringExtra(OrderScheduler.EXTRA_TITLE).orEmpty(),
+                        intent.getStringExtra(OrderScheduler.EXTRA_TEXT).orEmpty(),
+                        at,
+                    )
+                }
+                OrderScheduler.reschedule(context.applicationContext)
+            }
+            return
+        }
         if (late < STALE_MS) {
             OrderNotifier.post(
                 context,

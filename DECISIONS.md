@@ -60,4 +60,15 @@ None right now. The next module spec (see ARCHITECTURE.md phases) will raise its
 | D-48 | Room for records (schemas exported to `app/schemas` so later releases migrate instead of wiping) | Claude | ARCHITECTURE.md |
 | D-49 | Ticking orders off is informational: a count for today, no streaks | Claude | Rules of command 7 |
 | D-50 | Alertness ratings (KSS 1–9) are collected now for curve calibration later | Claude | MODEL.md §5 |
-
+| D-51 | Food data is USDA SR Legacy, shipped inside the app (7,448 foods, 220 KB). No branded foods or barcodes | Claude | Public domain and offline; branded databases need the internet (D-43 cut barcodes) |
+| D-52 | Fuel's adaptive method is our own energy-balance loop (MODEL.md §10), not a copy of MacroFactor's | Claude | Their algorithm is proprietary; CLAUDE.md says don't copy methods |
+| D-53 | Expenditure: 21-day window; needs 14 fully logged days and 8 weigh-ins spanning 14 days; each check-in moves halfway; kept between REE and 2.5 × REE | Claude | Tuned in simulation (`check_model.py`): converges within 150 kcal by week 8 from guesses 27% high or 10% low |
+| D-54 | Weight change for expenditure comes from a least-squares line through raw weigh-ins, not from the trend | Claude | The 10% trend lags ~10 days and biased early estimates in simulation |
+| D-55 | Calorie target never below resting energy; it may rise at once but falls at most 200 kcal per check-in; a goal you change applies at once | Claude | Rules of command 3 and 4 |
+| D-56 | Protein 1.6 g/kg trend weight for every goal | Claude | Morton et al. 2018. Helms et al.'s higher lean-mass figures are for lean contest-prep athletes |
+| D-57 | Fat 25% of calories; carbohydrate is the remainder, shown against the Burke et al. g/kg bands | Claude | Inside the IOM 20–35% range |
+| D-58 | Tuesday fruit day: logged, counted in expenditure, no macro targets, no making up the difference on other days. Saturday vegan and everyday fish-only are search filters. All editable | Claude | Your weekly practice; Commander respects it rather than ordering around it |
+| D-59 | Weekly check-in on Monday | Claude | Tuesday is a fruit day, so Monday's targets start on a normal day |
+| D-60 | A day counts for expenditure when it has at least one entry and isn't marked "not fully logged" | Claude | Partly logged days would pull the estimate down |
+| D-61 | Goal choices: lose 1, 0.5 or 0.25% a week, maintain, gain 0.25 or 0.5% a week; setup suggests lose 0.5% | Claude | Helms et al. 2014; the slower end protects triathlon training |
+| D-62 | Daily weigh-in order after waking, on by default once Fuel is set up | Claude | The trend and expenditure need frequent weigh-ins |

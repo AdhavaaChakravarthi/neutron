@@ -4,12 +4,15 @@ import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.adhavaa.commander.model.Activity
 import com.adhavaa.commander.orders.DEFAULT_REMINDERS
 import com.adhavaa.commander.orders.OrderKind
 import kotlinx.coroutines.flow.Flow
@@ -37,6 +40,37 @@ class SettingsStore(context: Context) {
         val campaignStart = longPreferencesKey("campaign_start_epoch_day")
         val needAuto = booleanPreferencesKey("need_auto")
         val freeDays = stringSetPreferencesKey("free_days")
+        val fuelMale = booleanPreferencesKey("fuel_male")
+        val fuelBirthYear = intPreferencesKey("fuel_birth_year")
+        val fuelHeight = doublePreferencesKey("fuel_height_cm")
+        val fuelStartWeight = doublePreferencesKey("fuel_start_weight_kg")
+        val fuelStart = longPreferencesKey("fuel_start_epoch_day")
+        val fuelActivity = stringPreferencesKey("fuel_activity")
+        val fuelRate = doublePreferencesKey("fuel_rate")
+        val fuelCheckInDay = stringPreferencesKey("fuel_check_in_day")
+        val fuelFruitDays = stringSetPreferencesKey("fuel_fruit_days")
+        val fuelVeganDays = stringSetPreferencesKey("fuel_vegan_days")
+        val fuelFishOnly = booleanPreferencesKey("fuel_fish_only")
+    }
+
+    private fun days(names: Set<String>?, fallback: Set<DayOfWeek>): Set<DayOfWeek> =
+        names?.mapNotNull { name -> DayOfWeek.entries.firstOrNull { it.name == name } }?.toSet() ?: fallback
+
+    private fun fuel(p: Preferences): FuelSettings {
+        val d = FuelSettings()
+        return FuelSettings(
+            male = p[Keys.fuelMale],
+            birthYear = p[Keys.fuelBirthYear],
+            heightCm = p[Keys.fuelHeight],
+            startWeightKg = p[Keys.fuelStartWeight],
+            start = p[Keys.fuelStart]?.let(LocalDate::ofEpochDay),
+            activity = p[Keys.fuelActivity]?.let { n -> Activity.entries.firstOrNull { it.name == n } } ?: d.activity,
+            rate = p[Keys.fuelRate] ?: d.rate,
+            checkInDay = p[Keys.fuelCheckInDay]?.let { n -> DayOfWeek.entries.firstOrNull { it.name == n } } ?: d.checkInDay,
+            fruitDays = days(p[Keys.fuelFruitDays], d.fruitDays),
+            veganDays = days(p[Keys.fuelVeganDays], d.veganDays),
+            fishOnly = p[Keys.fuelFishOnly] ?: d.fishOnly,
+        )
     }
 
     val settings: Flow<Settings> = store.data
@@ -59,6 +93,7 @@ class SettingsStore(context: Context) {
                     ?.mapNotNull { name -> DayOfWeek.entries.firstOrNull { it.name == name } }
                     ?.toSet()
                     ?: Settings.DEFAULT_FREE_DAYS,
+                fuel = fuel(p),
             )
         }
 
@@ -101,6 +136,28 @@ class SettingsStore(context: Context) {
 
     suspend fun setFreeDays(days: Set<DayOfWeek>) {
         store.edit { it[Keys.freeDays] = days.map { d -> d.name }.toSet() }
+    }
+
+    /**
+     * Saves the Fuel profile and practices. The start day and start weight are kept from the first setup, so
+     * editing your profile later doesn't restart the expenditure estimate.
+     */
+    suspend fun setFuel(f: FuelSettings, today: LocalDate) {
+        store.edit {
+            f.male?.let { v -> it[Keys.fuelMale] = v }
+            f.birthYear?.let { v -> it[Keys.fuelBirthYear] = v }
+            f.heightCm?.let { v -> it[Keys.fuelHeight] = v }
+            if (it[Keys.fuelStart] == null) {
+                it[Keys.fuelStart] = (f.start ?: today).toEpochDay()
+                f.startWeightKg?.let { v -> it[Keys.fuelStartWeight] = v }
+            }
+            it[Keys.fuelActivity] = f.activity.name
+            it[Keys.fuelRate] = f.rate
+            it[Keys.fuelCheckInDay] = f.checkInDay.name
+            it[Keys.fuelFruitDays] = f.fruitDays.map { d -> d.name }.toSet()
+            it[Keys.fuelVeganDays] = f.veganDays.map { d -> d.name }.toSet()
+            it[Keys.fuelFishOnly] = f.fishOnly
+        }
     }
 
     suspend fun resetOnboarding() {

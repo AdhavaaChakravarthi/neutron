@@ -8,7 +8,10 @@ import kotlin.math.roundToInt
  * Turns [TodayOrders] into the words Commander says. Pure Kotlin (no Android) so it is unit-tested on the JVM.
  * Copy rules: imperative and short; every order carries its reason; estimates say so; wellness only.
  */
-enum class OrderKind { WAKE, GROGGY, PEAK, DIP, CAFFEINE, NAP, MELATONIN, WIND_DOWN, SLEEPY, LIGHTS_OUT, TOMORROW, CHECK_IN }
+enum class OrderKind {
+    WAKE, GROGGY, PEAK, DIP, CAFFEINE, NAP, MELATONIN, WIND_DOWN, SLEEPY, LIGHTS_OUT, TOMORROW, CHECK_IN,
+    WEIGH_IN, EAT_TO_TARGET,
+}
 
 data class Order(
     val kind: OrderKind,
@@ -160,6 +163,8 @@ fun shortName(kind: OrderKind): String = when (kind) {
     OrderKind.LIGHTS_OUT -> "Lights out"
     OrderKind.TOMORROW -> "Up"
     OrderKind.CHECK_IN -> "Morning report"
+    OrderKind.WEIGH_IN -> "Weigh in"
+    OrderKind.EAT_TO_TARGET -> "Eat to target"
 }
 
 /** The mission brief: what's left of today in two or three plain sentences. */

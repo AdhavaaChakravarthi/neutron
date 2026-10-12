@@ -10,9 +10,10 @@ import random
 import sys
 from pathlib import Path
 
-from commander_model import (Episode, TpmParams, chronotype_msfsc, daily_sleep, detect_rest_period, estimate_need,
-                             need_from_history, personal_acrophase, plan_for_schedule, plan_from_history,
-                             schedule_episodes, simulate, sleep_debt, sleep_regularity_index, social_jetlag)
+from commander_model import (KCAL_PER_KG, Episode, FuelProfile, TpmParams, chronotype_msfsc, daily_sleep,
+                             detect_rest_period, estimate_need, fuel_check_ins, need_from_history, personal_acrophase,
+                             plan_for_schedule, plan_from_history, schedule_episodes, simulate, sleep_debt,
+                             sleep_regularity_index, social_jetlag, trend_series)
 
 OUT = Path(__file__).resolve().parent / "golden"
 TOL = 1e-8
@@ -138,7 +139,56 @@ def files() -> dict[str, str]:
             + f"{f(chronotype_msfsc(c['nights'], c['natural'], c['free'], 2))}")
     out["history_episodes.csv"] = "\n".join(ep_rows) + "\n"
     out["history.csv"] = "\n".join(h_rows) + "\n"
+    # --- fuel -------------------------------------------------------------
+    for name, case in fuel_cases().items():
+        prof, weigh, intake, through = case["profile"], case["weigh"], case["intake"], case["through"]
+        rows = [f"# male={f(prof.male)} age={f(prof.age_y)} height={f(prof.height_cm)} weight={f(prof.start_weight_kg)} "
+                f"activity={prof.activity} rate={f(prof.rate)} start={prof.start_day} weekday={prof.check_in_weekday} "
+                f"through={through}", "kind,day,value"]
+        rows += [f"w,{d},{f(kg)}" for d, kg in weigh] + [f"i,{d},{f(k)}" for d, k in sorted(intake.items())]
+        out[f"fuel_input_{name}.csv"] = "\n".join(rows) + "\n"
+        trend = trend_series(weigh)
+        out[f"fuel_trend_{name}.csv"] = "day,trend\n" + "".join(f"{d},{f(t)}\n" for d, t in sorted(trend.items()))
+        rows = ["day,trend,rest,expenditure,observed,weekly_rate,kcal,protein,fat,carb,floor,limited"]
+        for c in fuel_check_ins(prof, weigh, intake, through):
+            rows.append(",".join([str(c.day), f(c.trend_kg), f(c.rest_kcal), f(c.expenditure), f(c.observed),
+                                  f(c.weekly_rate), f(c.kcal), f(c.protein_g), f(c.fat_g), f(c.carb_g),
+                                  f(c.floor_applied), f(c.step_limited)]))
+        out[f"fuel_{name}.csv"] = "\n".join(rows) + "\n"
     return out
+
+
+def fuel_cases() -> dict:
+    """Synthetic people for the fuel golden vectors: noisy weigh-ins with gaps and repeats, noisy intake with gaps."""
+    cases = {}
+
+    def person(seed, w0, true_e, intake_mean, days, start, skip_log=0.15, skip_weigh=0.2):
+        r = random.Random(seed)
+        w, weigh, intake = w0, [(start, w0)], {}
+        for d in range(start, start + days):
+            eat = intake_mean(d - start) + r.gauss(0, 200)
+            if r.random() > skip_log:
+                intake[d] = round(eat, 1)
+            w += (eat - true_e) / KCAL_PER_KG
+            if r.random() > skip_weigh:
+                weigh.append((d + 1, round(w + r.gauss(0, 0.4), 2)))
+            if r.random() < 0.05:
+                weigh.append((d + 1, round(w + r.gauss(0, 0.4), 2)))
+        return weigh, intake
+
+    start = 20738   # Monday 2026-10-12
+    weigh, intake = person(31, 85.0, 2700, lambda k: 2300, 112, start)
+    cases["loss"] = dict(profile=FuelProfile(True, 22, 178, 85.0, "active", -0.005, start), weigh=weigh,
+                         intake=intake, through=start + 112)
+    weigh, intake = person(32, 60.0, 2000, lambda k: 2150, 84, start + 2, skip_log=0.3)
+    cases["gain"] = dict(profile=FuelProfile(False, 30, 165, 60.0, "light", 0.0025, start + 2, 3), weigh=weigh,
+                         intake=intake, through=start + 86)
+    weigh, intake = person(33, 95.0, 2100, lambda k: 1700 if k > 20 else 2600, 98, start)
+    cases["floor"] = dict(profile=FuelProfile(True, 40, 172, 95.0, "vigorous", -0.02, start), weigh=weigh,
+                          intake=intake, through=start + 98)
+    cases["empty"] = dict(profile=FuelProfile(True, 22, 178, 85.0, "light", 0.0, start + 5, 7), weigh=[],
+                          intake={}, through=start + 40)
+    return cases
 
 
 def history_cases() -> dict:

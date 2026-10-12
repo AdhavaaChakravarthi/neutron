@@ -14,10 +14,29 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import com.adhavaa.commander.FuelUi
 import com.adhavaa.commander.MorningReport
 import com.adhavaa.commander.UiState
+import com.adhavaa.commander.data.FuelSettings
+import com.adhavaa.commander.data.RecipeDraft
 import com.adhavaa.commander.data.Settings
 import com.adhavaa.commander.data.StoredSleep
+import com.adhavaa.commander.fuel.Diet
+import com.adhavaa.commander.fuel.Food
+import com.adhavaa.commander.fuel.FuelData
+import com.adhavaa.commander.fuel.Ingredient
+import com.adhavaa.commander.fuel.LogEntry
+import com.adhavaa.commander.fuel.Meal
+import com.adhavaa.commander.fuel.Nutrients
+import com.adhavaa.commander.fuel.Serving
+import com.adhavaa.commander.fuel.SearchFilter
+import com.adhavaa.commander.fuel.fuelPicture
+import com.adhavaa.commander.fuel.index
+import com.adhavaa.commander.fuel.parseCatalog
+import com.adhavaa.commander.fuel.searchFoods
+import com.adhavaa.commander.fuel.totals
+import com.adhavaa.commander.model.Activity
+import com.adhavaa.commander.model.WeighIn
 import com.adhavaa.commander.model.SleepKind
 import com.adhavaa.commander.model.SleepRecord
 import com.adhavaa.commander.orders.CommandData
@@ -34,6 +53,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.GZIPInputStream
 import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -174,5 +194,126 @@ class RenderTest {
     @Config(qualifiers = "w393dp-h4200dp-xhdpi")
     fun settingsScreen() = render("10-settings") {
         SettingsScreen(ready(day.atTime(16, 0), history()), SettingsActions(), notificationsAllowed = false, detectionOn = false)
+    }
+
+    // --- Fuel ---------------------------------------------------------------------------------
+
+    private val fuelSettings = FuelSettings(
+        male = true, birthYear = 2004, heightCm = 178.0, startWeightKg = 86.0, start = LocalDate.of(2026, 9, 14), activity = Activity.ACTIVE,
+    )
+
+    /** Four weeks of weigh-ins (a few missed) drifting down and fully logged days around 2,350 kcal. */
+    private fun fuelData(s: FuelSettings = fuelSettings): FuelData {
+        val start = s.start!!
+        val r = java.util.Random(4)
+        val days = java.time.temporal.ChronoUnit.DAYS.between(start, day).toInt()
+        val weighs = (0..days).filter { it % 6 != 5 }.map { WeighIn(start.plusDays(it.toLong()), 86.0 - it * 0.07 + r.nextGaussian() * 0.35) }
+        val kcal = (0 until days).associate { start.plusDays(it.toLong()) to 2350.0 + r.nextGaussian() * 180 }
+        return FuelData(s, weighs, kcal, emptySet())
+    }
+
+    private fun food(id: Long, name: String, kcal: Double, p: Double, f: Double, c: Double, recipe: Boolean = false) =
+        Food("food:$id", name, "Your foods", Nutrients(kcal, p, f, c, 2.0), listOf(Serving("serving", 200.0)), Diet.PLANT, recipe)
+
+    private fun entries(date: LocalDate): List<LogEntry> {
+        fun e(id: Long, meal: Meal, name: String, amount: String, n: Nutrients) = LogEntry(id, date, meal, "food:$id", name, 100.0, amount, n)
+        return listOf(
+            e(1, Meal.BREAKFAST, "Idli (home)", "3 piece (120 g)", Nutrients(168.0, 5.0, 0.6, 36.0, 1.5)),
+            e(2, Meal.BREAKFAST, "Sambar", "1 bowl (200 g)", Nutrients(142.0, 7.0, 4.0, 19.0, 5.0)),
+            e(3, Meal.BREAKFAST, "Coffee with milk", "1 cup (150 g)", Nutrients(70.0, 3.0, 3.2, 7.0, 0.0)),
+            e(4, Meal.LUNCH, "Rice, white, long-grain, regular, enriched, cooked", "1.5 cup (237 g)", Nutrients(308.0, 6.4, 0.7, 66.8, 0.9)),
+            e(5, Meal.LUNCH, "Fish curry (seer fish)", "1 serving (180 g)", Nutrients(260.0, 28.0, 14.0, 6.0, 1.0)),
+            e(6, Meal.LUNCH, "Beans poriyal", "1 serving (120 g)", Nutrients(110.0, 3.0, 6.0, 11.0, 4.0)),
+            e(7, Meal.SNACKS, "Bananas, raw", "1 medium (118 g)", Nutrients(105.0, 1.3, 0.4, 27.0, 3.1)),
+        )
+    }
+
+    private fun fuelUi(date: LocalDate = day, s: FuelSettings = fuelSettings, log: List<LogEntry> = entries(date)): FuelUi {
+        val d = fuelData(s)
+        return FuelUi(
+            settings = s,
+            picture = fuelPicture(d, date, day),
+            entries = log,
+            eaten = totals(log),
+            weighIns = d.weighIns,
+            trend = d.trend().entries.map { it.key to it.value },
+            myFoods = listOf(food(1, "Idli (home)", 140.0, 4.0, 0.5, 30.0), food(2, "Sambar", 71.0, 3.5, 2.0, 9.5, recipe = true)),
+            recent = emptyList(),
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h2900dp-xhdpi")
+    fun fuelTab() = render("11-fuel") {
+        FuelScreen(fuelUi(), FuelActions())
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h1700dp-xhdpi")
+    fun fuelNotSetUp() = render("12-fuel-setup-prompt") {
+        val s = FuelSettings()
+        FuelScreen(
+            FuelUi(s, fuelPicture(FuelData(s, emptyList(), emptyMap(), emptySet()), day, day), emptyList(), Nutrients.ZERO, emptyList(), emptyList(), emptyList(), emptyList()),
+            FuelActions(),
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h1400dp-xhdpi")
+    fun fuelFruitDay() = render("13-fuel-fruit-day") {
+        val tuesday = LocalDate.of(2026, 10, 13)
+        val fruit = listOf(
+            LogEntry(1, tuesday, Meal.BREAKFAST, "usda:9040", "Bananas, raw", 236.0, "2 medium (236 g)", Nutrients(210.0, 2.6, 0.8, 53.9, 6.1)),
+            LogEntry(2, tuesday, Meal.LUNCH, "usda:9176", "Mangos, raw", 330.0, "1 fruit (336 g)", Nutrients(198.0, 2.7, 1.3, 49.5, 5.3)),
+        )
+        FuelScreen(fuelUi(tuesday, log = fruit), FuelActions())
+    }
+
+    private fun usda(): List<Food> {
+        val file = listOf(File("src/main/assets/foods.tsv.gz"), File("app/src/main/assets/foods.tsv.gz")).first { it.exists() }
+        return GZIPInputStream(file.inputStream()).bufferedReader().useLines { parseCatalog(it) }
+    }
+
+    @Test
+    fun addFood() = render("14-add-food") {
+        val filter = SearchFilter(fishOnly = true)
+        val results = searchFoods("lentils", index(usda()), filter)
+        AddFoodScreen(
+            title = "Add to Lunch", meal = Meal.LUNCH, initialFilter = filter, dayType = com.adhavaa.commander.fuel.DayType.NORMAL,
+            myFoods = emptyList(), search = { _, _ -> results }, onChosen = { _, _, _, _ -> }, onBack = {},
+            onNewFood = {}, onNewRecipe = {}, initialQuery = "lentils", initialResults = results,
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h2200dp-xhdpi")
+    fun fuelSetup() = render("15-fuel-setup") {
+        FuelSetupScreen(FuelSettings(), day, { _, _ -> }, {})
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h1600dp-xhdpi")
+    fun recipeEditor() = render("16-recipe") {
+        val all = usda().associateBy { it.name }
+        val draft = RecipeDraft(
+            7, "Rasam",
+            listOf(
+                Ingredient(all.getValue("Tomatoes, red, ripe, raw, year round average"), 200.0),
+                Ingredient(all.getValue("Pigeon peas (red gram), mature seeds, raw"), 40.0),
+                Ingredient(all.getValue("Tamarinds, raw"), 15.0),
+                Ingredient(all.getValue("Oil, sesame, salad or cooking"), 10.0),
+            ),
+            cookedG = 900.0, portions = 4,
+        )
+        RecipeEditor(draft, {}, {}, {}, {})
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h3400dp-xhdpi")
+    fun todayWithFuel() = render("17-today-fuel") {
+        val d = fuelData()
+        val pic = fuelPicture(d.copy(weighIns = d.weighIns.filter { it.date != day }), day, day)
+        val base = ready(day.atTime(7, 20), history())
+        TodayScreen(base.copy(fuel = pic, eaten = totals(entries(day).take(3))), TodayActions())
     }
 }

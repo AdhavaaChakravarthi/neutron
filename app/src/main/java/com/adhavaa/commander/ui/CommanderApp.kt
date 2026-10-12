@@ -41,7 +41,7 @@ import com.adhavaa.commander.notify.OrderNotifier
 import com.adhavaa.commander.notify.PhoneUsage
 
 /** Top-level destinations, in bottom-bar order. Later modules add tabs here. */
-enum class Tab(val label: String) { TODAY("Today"), SLEEP("Sleep") }
+enum class Tab(val label: String) { TODAY("Today"), SLEEP("Sleep"), FUEL("Fuel") }
 
 @Composable
 fun CommanderApp(vm: CommanderViewModel = viewModel()) {
@@ -81,6 +81,7 @@ fun CommanderApp(vm: CommanderViewModel = viewModel()) {
             } else {
                 var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
                 var settingsOpen by rememberSaveable { mutableStateOf(false) }
+                var fuelFullScreen by remember { mutableStateOf(false) }
                 if (settingsOpen) {
                     BackHandler { settingsOpen = false }
                     SettingsScreen(
@@ -115,6 +116,8 @@ fun CommanderApp(vm: CommanderViewModel = viewModel()) {
                                             onSetAlarm = { openSetAlarm(context, it) },
                                             onToggleDone = { kind, done -> vm.setDone(s.orders.date, kind, done) },
                                             onRate = vm::rate,
+                                            onLogWeight = { kg -> vm.logWeight(s.now.toLocalDate(), kg) },
+                                            onOpenFuel = { tab = Tab.FUEL },
                                         ),
                                         banner = {
                                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -145,10 +148,11 @@ fun CommanderApp(vm: CommanderViewModel = viewModel()) {
                                             onEnableDetection = enableDetection,
                                         ),
                                     )
+                                    Tab.FUEL -> FuelRoute(onOpenSettings = { settingsOpen = true }, onFullScreen = { fuelFullScreen = it })
                                 }
                             }
                         }
-                        BottomBar(tab) { tab = it }
+                        if (!(tab == Tab.FUEL && fuelFullScreen)) BottomBar(tab) { tab = it }
                     }
                 }
             }

@@ -10,8 +10,9 @@ import random
 import sys
 from pathlib import Path
 
-from commander_model import (Episode, TpmParams, detect_rest_period, estimate_need,
-                           kss_from_alertness, personal_acrophase, simulate, sleep_debt)
+from commander_model import (KCAL_PER_KG, MAX_STEP_KCAL, Episode, FuelProfile, TpmParams, detect_rest_period,
+                              estimate_need, fuel_check_ins, kss_from_alertness, losing_too_fast,
+                              personal_acrophase, resting_energy, simulate, sleep_debt, targets_on, trend_series)
 
 PRM = TpmParams()
 failures: list[str] = []
@@ -153,6 +154,62 @@ if res:
           f"onset error {err_on:+d} min, offset error {err_off:+d} min")
 else:
     check("Detects the night despite a 3 a.m. check", False, "no rest period found")
+
+# --- Fuel (MODEL.md section 10) ---------------------------------------------
+check("Mifflin-St Jeor worked example", resting_energy(80, 180, 25, True) == 1805.0
+      and resting_energy(80, 180, 25, False) == 1639.0, "80 kg, 180 cm, 25 y: 1805 kcal (men), 1639 kcal (women)")
+tr = trend_series([(0, 80.0)] + [(d, 81.0) for d in range(1, 30)])
+check("Trend moves 10% of the way each day", abs(tr[1] - 80.1) < 1e-9 and abs(tr[29] - (81 - 0.9 ** 29)) < 1e-9,
+      f"after a 1 kg step: day 1 {tr[1]:.2f}, day 29 {tr[29]:.2f}")
+
+FUEL_START = 20738   # a Monday
+
+
+def fuel_sim(true_e: float, activity: str, rate: float, weeks: int, seed: int, logged_share: float = 1.0,
+             log_every: int = 1, eat_offset: float = 0.0):
+    """A person who eats their target (+/- 150 kcal, plus eat_offset) and weighs in daily (+/- 0.4 kg water).
+    They log `logged_share` of what they eat, on every `log_every`-th day."""
+    prof = FuelProfile(True, 22, 178, 85.0, activity, rate, FUEL_START)
+    rng = random.Random(seed)
+    w, weigh, intake, true_w = 85.0, [(FUEL_START, 85.0)], {}, []
+    cis = []
+    for d in range(FUEL_START, FUEL_START + 7 * weeks + 1):
+        cis = fuel_check_ins(prof, weigh, intake, d)
+        logged = targets_on(cis, d).kcal + rng.gauss(0, 150) + eat_offset
+        if (d - FUEL_START) % log_every == 0:
+            intake[d] = logged
+        w += (logged / logged_share - true_e) / KCAL_PER_KG
+        true_w.append(w)
+        weigh.append((d + 1, w + rng.gauss(0, 0.4)))
+    return cis, true_w
+
+
+over, _ = fuel_sim(2700, "active", -0.005, 16, 1)    # starting guess ~3440 kcal, 27% high
+late = [c.expenditure for c in over if c.day >= FUEL_START + 56]
+check("Expenditure converges from a high first guess", all(abs(e - 2700) < 150 for e in late),
+      f"true 2700 kcal; weeks 8-16 estimate {min(late):.0f}-{max(late):.0f}")
+under, _ = fuel_sim(3200, "light", 0.0, 16, 2)       # starting guess ~2880 kcal, 10% low
+late = [c.expenditure for c in under if c.day >= FUEL_START + 56]
+check("Expenditure converges from a low first guess", all(abs(e - 3200) < 150 for e in late),
+      f"true 3200 kcal; weeks 8-16 estimate {min(late):.0f}-{max(late):.0f}")
+hide, true_w = fuel_sim(2700, "active", -0.005, 20, 3, logged_share=0.8)
+rate = (true_w[-1] - true_w[-57]) / 8 / true_w[-57]
+check("Under-logging by 20% still loses weight near the goal", -0.0060 < rate < -0.0015,
+      f"goal -0.50%/wk; weeks 12-20 actual {rate * 100:.2f}%/wk (the resting-energy floor binds)")
+sims = [over, under, hide, fuel_sim(2400, "vigorous", -0.01, 16, 4)[0], fuel_sim(2700, "active", 0.0025, 16, 5)[0]]
+check("Target never below resting energy", all(c.kcal >= c.rest_kcal - 1e-9 for s in sims for c in s),
+      f"{sum(len(s) for s in sims)} check-ins across 5 simulated people")
+drops = [a.kcal - b.kcal for s in sims for a, b in zip(s, s[1:])]
+check("Target never drops more than 200 kcal in a week", max(drops) <= MAX_STEP_KCAL + 1e-9,
+      f"largest drop {max(drops):.0f} kcal")
+sparse, _ = fuel_sim(2700, "active", -0.005, 8, 6, log_every=2)
+check("No update from half-logged weeks", all(c.observed is None for c in sparse)
+      and len({round(c.expenditure, 6) for c in sparse}) == 1, "logging every other day leaves the first guess alone")
+crash, _ = fuel_sim(2700, "active", -0.005, 10, 7, eat_offset=-1300)
+check("Losing faster than 1%/week is flagged", losing_too_fast(crash[-1]),
+      f"eating ~1300 kcal under target: {crash[-1].weekly_rate * 100:.2f}%/wk")
+check("Normal loss is not flagged", not any(losing_too_fast(c) for c in over),
+      f"goal -0.5%/wk: fastest observed {min(c.weekly_rate for c in over if c.weekly_rate is not None) * 100:.2f}%/wk")
 
 # --- Figure -----------------------------------------------------------------
 if "--plot" in sys.argv:

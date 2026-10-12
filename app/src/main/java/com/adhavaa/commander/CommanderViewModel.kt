@@ -5,6 +5,11 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.adhavaa.commander.data.Settings
 import com.adhavaa.commander.data.StoredSleep
+import com.adhavaa.commander.fuel.FuelData
+import com.adhavaa.commander.fuel.FuelPicture
+import com.adhavaa.commander.fuel.Nutrients
+import com.adhavaa.commander.fuel.fuelPicture
+import com.adhavaa.commander.fuel.totals
 import com.adhavaa.commander.model.SleepKind
 import com.adhavaa.commander.model.SleepPicture
 import com.adhavaa.commander.model.SleepRecord
@@ -23,6 +28,7 @@ import com.adhavaa.commander.orders.detectionWindow
 import com.adhavaa.commander.orders.needsMorningReport
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,7 +36,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -62,6 +70,9 @@ sealed interface UiState {
         val skipped: Set<LocalDate>,
         val done: Set<OrderKind>,
         val report: MorningReport?,
+        /** Today's fuel numbers, for the weigh-in order and the brief. */
+        val fuel: FuelPicture? = null,
+        val eaten: Nutrients = Nutrients.ZERO,
     ) : UiState
     data class Failed(val message: String) : UiState
 }
@@ -96,10 +107,19 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
     private val detected = MutableStateFlow<Pair<LocalDate, DetectedNight?>?>(null)
     private val usageAccess = MutableStateFlow(PhoneUsage.hasAccess(app))
 
+    private val fuelData: Flow<FuelData> = combine(
+        c.settings.settings.map { it.fuel }, c.fuel.observeWeights(), c.fuel.observeDailyKcal(), c.fuel.observeIncomplete(),
+    ) { s, w, k, inc -> FuelData(s, w, k, inc) }.distinctUntilChanged()
+
+    // Food days are calendar days. Today's picture is rebuilt when the date turns or fuel data changes.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val fuelToday: Flow<Pair<FuelPicture, Nutrients>> = clock.map { it.toLocalDate() }.distinctUntilChanged()
+        .flatMapLatest { d -> combine(fuelData, c.fuel.observeLog(d)) { fd, log -> fuelPicture(fd, d, d) to totals(log) } }
+
     val state: StateFlow<UiState> = combine(
         data, c.sleep.observeSleep(), c.sleep.observeDone(), clock,
-        combine(detected, usageAccess) { d, a -> d to a },
-    ) { d, stored, done, now, (det, access) ->
+        combine(detected, usageAccess, fuelToday) { d, a, f -> Triple(d, a, f) },
+    ) { d, stored, done, now, (det, access, fuel) ->
         try {
             val date = d.planDate(now)
             val p = picture(d, date)
@@ -119,6 +139,8 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
                 skipped = d.skipped,
                 done = done[date].orEmpty(),
                 report = report,
+                fuel = fuel.first,
+                eaten = fuel.second,
             )
         } catch (e: RuntimeException) {
             UiState.Failed(e.message ?: e.javaClass.simpleName)
@@ -222,6 +244,10 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
 
     fun setCampaignStart(date: LocalDate) {
         viewModelScope.launch { c.settings.setCampaignStart(date) }
+    }
+
+    fun logWeight(date: LocalDate, kg: Double) {
+        viewModelScope.launch(Dispatchers.IO) { c.fuel.setWeight(date, kg) }
     }
 
     fun sendTestOrder() = OrderNotifier.postTest(app)

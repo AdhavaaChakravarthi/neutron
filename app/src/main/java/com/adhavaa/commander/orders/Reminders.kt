@@ -10,13 +10,17 @@ data class Reminder(val kind: OrderKind, val at: LocalDateTime, val title: Strin
 
 /** Orders that can send a reminder, in the order they happen in a day. */
 val REMINDABLE: List<OrderKind> = listOf(
-    OrderKind.WAKE, OrderKind.CHECK_IN, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.MELATONIN, OrderKind.WIND_DOWN,
-    OrderKind.LIGHTS_OUT,
+    OrderKind.WAKE, OrderKind.WEIGH_IN, OrderKind.CHECK_IN, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.MELATONIN,
+    OrderKind.WIND_DOWN, OrderKind.LIGHTS_OUT,
 )
 
-/** On by default. Melatonin is an estimate with no action of its own, so it starts off. DECISIONS.md D-38. */
+/**
+ * On by default. Melatonin is an estimate with no action of its own, so it starts off (D-38). The weigh-in only
+ * fires once Fuel is set up (D-62).
+ */
 val DEFAULT_REMINDERS: Set<OrderKind> = setOf(
-    OrderKind.WAKE, OrderKind.CHECK_IN, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.WIND_DOWN, OrderKind.LIGHTS_OUT,
+    OrderKind.WAKE, OrderKind.WEIGH_IN, OrderKind.CHECK_IN, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.WIND_DOWN,
+    OrderKind.LIGHTS_OUT,
 )
 
 /** The caffeine reminder comes early so there is still time for a last cup. ASSUMPTION, DECISIONS.md D-38. */
@@ -30,6 +34,7 @@ fun reminderLabel(kind: OrderKind): String = when (kind) {
     OrderKind.WIND_DOWN -> "Wind down"
     OrderKind.LIGHTS_OUT -> "Lights out"
     OrderKind.CHECK_IN -> "Morning report (confirm last night)"
+    OrderKind.WEIGH_IN -> "Weigh in (once Fuel is set up)"
     else -> kind.name.lowercase()
 }
 
@@ -91,7 +96,14 @@ fun upcomingReminders(
     return (0 until days)
         .flatMap { offset ->
             val date = first.plusDays(offset.toLong())
-            val list = reminders(data.picture(date).orders, settings.reminders, fmt).toMutableList()
+            val orders = data.picture(date).orders
+            val list = reminders(orders, settings.reminders, fmt).toMutableList()
+            if (OrderKind.WEIGH_IN in settings.reminders && settings.fuel.setUp) {
+                list += Reminder(
+                    OrderKind.WEIGH_IN, weighInTime(orders), "Weigh in",
+                    "After the toilet, before food or drink. Same scale every morning.",
+                )
+            }
             if (OrderKind.CHECK_IN in settings.reminders && !data.nightRecorded(date)) {
                 list += Reminder(
                     OrderKind.CHECK_IN, checkInTime(data, date, now), "Morning report",

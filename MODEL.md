@@ -1,8 +1,8 @@
 # Commander model
 
-How Commander turns sleep history into a sleep-need estimate, a sleep-debt number and a daily energy curve. Every parameter has a source or is labelled **ASSUMPTION** or **RECONSTRUCTED**. The executable version is `tools/model-reference/commander_model.py`; `check_model.py` runs the behavioural checks below.
+How Commander turns sleep history into a sleep-need estimate, a sleep-debt number and a daily energy curve, and food and weight logs into calorie and macro targets (§10). Every parameter has a source or is labelled **ASSUMPTION** or **RECONSTRUCTED**. The executable version is `tools/model-reference/commander_model.py`; `check_model.py` runs the behavioural checks below.
 
-Commander is a personal wellness tool. Nothing here diagnoses or treats a sleep disorder.
+Commander is a personal wellness tool. Nothing here diagnoses or treats a sleep disorder or any other condition.
 
 ---
 
@@ -105,10 +105,10 @@ Implemented in `plan_day` / `plan_for_schedule` (Python) and `planDay` / `planFo
 
 `python3 tools/model-reference/check_model.py` currently reports:
 
-- **Pass (13):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check.
+- **Pass (23):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check; the 10 fuel checks in §10.
 - **Known limitations (3, reported every run, don't fail the build):** no afternoon dip/second wind; no accumulation across short nights; one recovery night fully restores. Decided in D-25 and D-26.
 
-`python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
+`python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules, real-night histories, and trend weight and check-ins for four fuel cases). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
 
 ## 9. Real nights
 
@@ -136,6 +136,62 @@ Implemented in the "Real nights" section of `commander_model.py` and in `model/.
 
 **Exercise timing.** The wind-down order adds "no hard training from now". In a meta-analysis evening exercise did not harm sleep overall, but vigorous exercise ending ≤ 1 h before bedtime might [21].
 
+## 10. Fuel
+
+Implemented in section 7 of `commander_model.py` and in `model/.../Fuel.kt`; golden vectors in `golden/fuel_*.csv`. The idea follows adaptive calorie apps such as MacroFactor: targets follow the expenditure your own logs and weigh-ins imply, not a formula. Their algorithm is not public, so this one is built from the energy-balance equation and the published numbers below. Every choice beyond those is labelled.
+
+**Food data.** USDA SR Legacy [30], which is public domain: 7,448 foods per 100 g (kcal, protein, fat, carbohydrate, fiber, sugars, sodium) plus USDA household servings. Baby foods are dropped. Built by `tools/food-db/build_food_db.py` and shipped inside the app, so search works offline. Each log entry stores its own nutrients, so editing a custom food later doesn't rewrite past days. Custom foods and recipes are yours. A recipe's nutrients are the sum of its ingredients spread over the cooked weight you enter.
+
+**Resting energy.** Mifflin–St Jeor: REE = 10·W + 6.25·H − 5·A + 5 for men, − 161 for women (kcal/day; kg, cm, years) [22]. W is the trend weight. A is whole years from your birth year (**ASSUMPTION**, at most ±5 kcal).
+
+**First estimate of expenditure.** E₀ = REE × PAL, with PAL the midpoint of the band you pick from FAO/WHO/UNU [23]: sedentary or light 1.40–1.69 (1.55), active or moderately active 1.70–1.99 (1.85), vigorous 2.00–2.40 (2.20). Taking midpoints, and using Mifflin REE where FAO multiplies BMR, are **ASSUMPTIONS**. The guess can be hundreds of kcal off. The check-ins correct it.
+
+**Trend weight.** Weigh-ins on the same day are averaged. Days between weigh-ins are filled with a straight line (**ASSUMPTION**). Then T(d) = T(d−1) + 0.1·(w(d) − T(d−1)), the 10% exponentially smoothed moving average of The Hacker's Diet [25]. The screen shows the trend, because daily weight swings with water and gut contents.
+
+**Adaptive expenditure.** At each weekly check-in (Monday by default; D-59) Commander looks at the previous 21 days.
+
+- observed = mean kcal on fully logged days − 7700 × slope, where slope is the least-squares slope of the daily weigh-ins (kg/day).
+- 7700 kcal/kg is the 3,500 kcal/lb rule (32.2 MJ/kg). Hall showed it roughly fits people with high body fat but overstates the deficit needed by leaner people, and that the energy per kg lost falls as more of the loss is lean tissue [24]. Commander still uses it because the constant cancels: the same constant converts weight change to kcal in both the estimate and the target, so the loop settles on the intake that gives the weight change you asked for. The simulations below test this. The rate shown is the measured one.
+- An update needs at least 14 fully logged days and at least 8 weigh-in days, spanning at least 14 days, inside the window. Otherwise the estimate holds (**ASSUMPTIONS**). Days with nothing logged or marked "not fully logged" are left out, not counted as 0.
+- E ← E + 0.5·(observed − E), kept between REE and 2.5 × REE (**ASSUMPTIONS**; FAO calls PAL above 2.40 difficult to maintain [23], and the margin allows for logging error and the error of the REE equation).
+- A straight-line fit is used rather than the change in trend. The 10% trend lags about 10 days behind a real change, which biased early estimates in simulation. A 21-day fit has no lag (**ASSUMPTION**, D-54).
+
+**Targets.** Set at the start and at each check-in, then held until the next one.
+
+| Target | Rule | Basis |
+|---|---|---|
+| Calories | E + goal × trend weight × 7700 / 7 | Goal: lose 0.25, 0.5 (default) or 1% of body weight a week, maintain, or gain 0.25 or 0.5%. Helms et al. recommend 0.5–1% a week for loss [26]. The gain cap is an **ASSUMPTION** |
+| Floor | Never below REE | **ASSUMPTION**; rule of command 4 (no crash diet) |
+| Speed of change | May rise at once; falls by at most 200 kcal per check-in. A goal you change applies at once | **ASSUMPTION**; rule of command 3 |
+| Protein | 1.6 g per kg trend weight, every goal | In Morton et al.'s meta-regression, total protein beyond 1.62 g/kg/day gave no further resistance-training gain in fat-free mass [27]. The higher 2.3–3.1 g/kg of lean mass in Helms et al. is for lean athletes preparing for contests [26] and is not applied (D-56) |
+| Fat | 25% of calories | Inside the IOM acceptable range of 20–35% of energy [28]; 25% is an **ASSUMPTION** |
+| Carbohydrate | The rest | Shown in g/kg beside the Burke et al. daily bands [29]: 3–5 g/kg for light or skill-based activity, 5–7 for about 1 h a day of moderate exercise, 6–10 for 1–3 h a day of endurance work, 8–12 for 4–5 h a day. Train (phase 8) will use the bands for training days |
+
+**Your weekly practices.** Tuesday fruit day: food is logged and counts toward expenditure, but no macro targets are set that day and no other day is asked to make up the difference (D-58). Saturday vegan: search hides animal foods. Fish-only: search hides meat and poultry every day. All three can be changed in Settings.
+
+**Orders.**
+
+- **Weigh in.** Every morning after waking, after the toilet, before eating or drinking, on the same scale (**ASSUMPTION**: the same conditions each day keep the noise down).
+- **Eat to target.** In a loss phase, if the 21-day measured loss is faster than 1% of body weight a week (the upper end in [26]), Commander orders eating up to target. Fast loss is never praised.
+- **Check-in.** Each Monday the Fuel tab shows the new expenditure, the new targets and why they moved.
+
+**Who this is for.** A healthy adult. During setup Commander says to talk to a doctor or dietitian first if you are pregnant, have a medical condition that affects what you eat, or have a history of disordered eating.
+
+**Checks.** `check_model.py` adds 10 fuel checks:
+
+- the Mifflin worked example
+- the 10% trend step
+- convergence to within 150 kcal of true expenditure by week 8, from a first guess 27% high and from one 10% low
+- loss staying near the goal when 20% of food goes unlogged
+- the floor
+- the 200 kcal limit
+- no update from half-logged weeks
+- fast loss flagged, normal loss not flagged
+
+The simulated person eats target ± 150 kcal and weighs in daily with ± 0.4 kg of water noise.
+
+**Limits.** For the first three weeks expenditure is the formula guess. Water shifts after a change in carbohydrate or salt bend the weight fit for a week or two. Training days aren't modelled separately yet; expenditure is a 21-day average.
+
 ---
 
 ## Sources
@@ -162,4 +218,12 @@ Retrieved and checked during Phase 1 unless marked. † = the paper and its find
 19. Roenneberg T, Wirz-Justice A, Merrow M. Life between clocks: daily temporal patterns of human chronotypes. *Journal of Biological Rhythms*. 2003;18(1):80–90; and Roenneberg T, Allebrandt KV, Merrow M, Vetter C. Social jetlag and obesity. *Current Biology*. 2012;22(10):939–943. (Formula as given in the `mctq` R package documentation.)
 20. Brooks A, Lack L. A brief afternoon nap following nocturnal sleep restriction: which nap duration is most recuperative? *Sleep*. 2006;29(6):831–840. ‡ (finding checked via a secondary summary; citation details from memory)
 21. Stutz J, Eiholzer R, Spengler CM. Effects of evening exercise on sleep in healthy participants: a systematic review and meta-analysis. *Sports Medicine*. 2019;49(2):269–287. doi:10.1007/s40279-018-1015-0 (abstract checked; author names from memory)
-
+22. Mifflin MD, St Jeor ST, Hill LA, et al. A new predictive equation for resting energy expenditure in healthy individuals. *American Journal of Clinical Nutrition*. 1990;51(2):241–247. † (equation checked; title from memory)
+23. FAO/WHO/UNU. *Human energy requirements*. Report of a joint FAO/WHO/UNU expert consultation, Rome, October 2001. † (PAL bands and the 2.40 statement checked; series details from memory)
+24. Hall KD. What is the required energy deficit per unit weight loss? *International Journal of Obesity*. 2008;32:573–576. doi:10.1038/sj.ijo.0803720
+25. Walker J. *The Hacker's Diet*. fourmilab.ch. † (the 10% smoothing checked; edition and year from memory)
+26. Helms ER, Aragon AA, Fitschen PJ. Evidence-based recommendations for natural bodybuilding contest preparation: nutrition and supplementation. *Journal of the International Society of Sports Nutrition*. 2014;11:20. doi:10.1186/1550-2783-11-20 † (recommendation table checked; citation details from memory)
+27. Morton RW, Murphy KT, McKellar SR, Schoenfeld BJ, Henselmans M, Helms E, Aragon AA, Devries MC, Banfield L, Krieger JW, Phillips SM. A systematic review, meta-analysis and meta-regression of the effect of protein supplementation on resistance training-induced gains in muscle mass and strength in healthy adults. *British Journal of Sports Medicine*. 2018;52:376–384. doi:10.1136/bjsports-2017-097608 (abstract checked; it gives no confidence interval for the 1.62 g/kg figure)
+28. Institute of Medicine. *Dietary Reference Intakes for Energy, Carbohydrate, Fiber, Fat, Fatty Acids, Cholesterol, Protein, and Amino Acids*. National Academies Press; 2005. doi:10.17226/10490 (fat range checked via the EU Knowledge for Policy summary table)
+29. Burke LM, Hawley JA, Wong SHS, Jeukendrup AE. Carbohydrates for training and competition. *Journal of Sports Sciences*. 2011;29(S1):S17–S27. doi:10.1080/02640414.2011.585473 (bands checked; activity wording via a textbook table that reproduces them)
+30. U.S. Department of Agriculture, Agricultural Research Service. USDA National Nutrient Database for Standard Reference, Legacy Release (SR Legacy). Public domain. Read from the SQLite build in nutratech/usda-sqlite release 0.0.9.

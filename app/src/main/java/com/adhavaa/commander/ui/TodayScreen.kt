@@ -62,6 +62,8 @@ import com.adhavaa.commander.orders.debtBand
 import com.adhavaa.commander.orders.doneCount
 import com.adhavaa.commander.orders.kssLabel
 import com.adhavaa.commander.orders.formatHours
+import com.adhavaa.commander.orders.fuelBrief
+import com.adhavaa.commander.orders.fuelOrders
 import com.adhavaa.commander.orders.nextOrder
 import com.adhavaa.commander.orders.phase
 import com.adhavaa.commander.orders.shortName
@@ -76,6 +78,8 @@ data class TodayActions(
     val onSetAlarm: (LocalDateTime) -> Unit = {},
     val onToggleDone: (OrderKind, Boolean) -> Unit = { _, _ -> },
     val onRate: (Int) -> Unit = {},
+    val onLogWeight: (Double) -> Unit = {},
+    val onOpenFuel: () -> Unit = {},
 )
 
 @Composable
@@ -83,9 +87,21 @@ fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable
     val fmt = rememberTimeFormatter()
     val orders = state.orders
     val now = state.now
-    val list = buildOrders(orders, fmt)
+    val list = (buildOrders(orders, fmt) + fuelOrders(state.fuel, orders, fmt))
+        .sortedWith(compareBy<Order> { it.at }.thenBy { it.kind.ordinal })
     val next = nextOrder(list, now)
     val insets = WindowInsets.safeDrawing.asPaddingValues()
+    var weighing by rememberSaveable { mutableStateOf(false) }
+    if (weighing) {
+        WeightDialog(
+            date = now.toLocalDate(),
+            existing = state.fuel?.weightOnDate,
+            lastKg = state.fuel?.trendKg,
+            onSave = actions.onLogWeight,
+            onDelete = null,
+            onDismiss = { weighing = false },
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
@@ -102,7 +118,7 @@ fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable
         item { banner() }
         item { TelemetryStrip(orders, next, now, fmt) }
         item { MissionPanel(state, list, next, fmt, actions.onRate) }
-        item { BriefPanel(orders, now, fmt) }
+        item { BriefPanel(orders, now, fmt, fuelBrief(state.fuel, state.eaten)) }
         item {
             HudPanel(
                 title = "Day radar",
@@ -132,7 +148,7 @@ fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable
                 }
             }
         }
-        item { TimelinePanel(list, state, now, fmt, actions) }
+        item { TimelinePanel(list, state, now, fmt, actions) { weighing = true } }
         item {
             Text(
                 "Wellness tool, not a medical device. No data leaves this phone.",
@@ -256,7 +272,7 @@ private fun AlertnessRow(onRate: (Int) -> Unit) {
 }
 
 @Composable
-private fun BriefPanel(orders: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) -> String) {
+private fun BriefPanel(orders: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) -> String, fuel: String?) {
     HudPanel(
         background = Brush.verticalGradient(listOf(Hud.mint, Hud.mintDeep)),
         border = Hud.mint,
@@ -267,6 +283,7 @@ private fun BriefPanel(orders: TodayOrders, now: LocalDateTime, fmt: (LocalDateT
         }
         Wireframe(orders, Modifier.fillMaxWidth().height(72.dp))
         Text(brief(orders, now, fmt), style = HudType.body, color = Hud.onMint)
+        if (fuel != null) Text(fuel, style = HudType.body, color = Hud.onMint)
         Text(
             "Planned from your recorded nights (your usual schedule fills gaps). The sharpest window is an estimate.",
             style = HudType.small,
@@ -315,7 +332,9 @@ private fun TimelinePanel(
     now: LocalDateTime,
     fmt: (LocalDateTime) -> String,
     actions: TodayActions,
+    onWeigh: () -> Unit,
 ) {
+    val done = if (state.fuel?.weightOnDate != null) state.done + OrderKind.WEIGH_IN else state.done
     HudPanel(
         title = "Mission timeline",
         subtitle = "Tap an order for the reason",
@@ -328,10 +347,12 @@ private fun TimelinePanel(
                     fmt = fmt,
                     now = now,
                     reminderOn = order.kind in state.settings.reminders,
-                    done = order.kind in state.done,
+                    done = order.kind in done,
                     onToggleReminder = actions.onToggleReminder,
                     onToggleDone = actions.onToggleDone,
                     onSetAlarm = actions.onSetAlarm,
+                    onWeigh = onWeigh,
+                    onOpenFuel = actions.onOpenFuel,
                 )
             }
         }
@@ -348,11 +369,14 @@ private fun TimelineRow(
     onToggleReminder: (OrderKind, Boolean) -> Unit,
     onToggleDone: (OrderKind, Boolean) -> Unit,
     onSetAlarm: (LocalDateTime) -> Unit,
+    onWeigh: () -> Unit = {},
+    onOpenFuel: () -> Unit = {},
 ) {
     var open by rememberSaveable(order.kind) { mutableStateOf(false) }
     val past = order.at.isBefore(now) && (order.until?.isBefore(now) ?: true)
     val current = !order.at.isAfter(now) && order.until?.isAfter(now) == true
-    val warn = order.kind == OrderKind.CAFFEINE || order.kind == OrderKind.LIGHTS_OUT || order.kind == OrderKind.WIND_DOWN
+    val warn = order.kind == OrderKind.CAFFEINE || order.kind == OrderKind.LIGHTS_OUT || order.kind == OrderKind.WIND_DOWN ||
+        order.kind == OrderKind.EAT_TO_TARGET
     val accent = when {
         past -> Hud.dim
         warn -> Hud.amber
@@ -400,16 +424,15 @@ private fun TimelineRow(
             if (open) Text("Why: ${order.why}", style = HudType.small, color = Hud.ink.copy(alpha = 0.8f))
             if (order.kind == OrderKind.TOMORROW) {
                 Spacer(Modifier.height(2.dp))
-                Text(
-                    "SET ALARM FOR ${fmt(order.at)}",
-                    style = HudType.label,
-                    color = Hud.onMint,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Hud.green)
-                        .clickable(role = Role.Button) { onSetAlarm(order.at) }
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                )
+                RowAction("SET ALARM FOR ${fmt(order.at)}") { onSetAlarm(order.at) }
+            }
+            if (order.kind == OrderKind.WEIGH_IN && !done) {
+                Spacer(Modifier.height(2.dp))
+                RowAction("LOG WEIGHT", onWeigh)
+            }
+            if (order.kind == OrderKind.EAT_TO_TARGET) {
+                Spacer(Modifier.height(2.dp))
+                RowAction("OPEN FUEL", onOpenFuel)
             }
         }
         Column(Modifier.padding(vertical = 4.dp)) {
@@ -441,3 +464,19 @@ private fun TimelineRow(
         }
     }
 }
+
+/** A small solid action inside a timeline row. */
+@Composable
+private fun RowAction(text: String, onClick: () -> Unit) {
+    Text(
+        text,
+        style = HudType.label,
+        color = Hud.onMint,
+        modifier = Modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(Hud.green)
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    )
+}
+

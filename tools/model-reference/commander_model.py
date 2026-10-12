@@ -495,3 +495,178 @@ def chronotype_msfsc(nights: Sequence[Episode], natural: Sequence[bool], free_wa
     sdweek = (sdw * (7 - fd) + sdf * fd) / 7.0
     msfsc = msf if sdf <= sdw else msf - (sdf - sdweek) / 2.0
     return (msfsc + 12.0) % 24.0
+
+
+# ---------------------------------------------------------------------------
+# 7. Fuel (MODEL.md section 10)
+# ---------------------------------------------------------------------------
+# Days are integer epoch days (1970-01-01 = 0, a Thursday), as LocalDate.toEpochDay() in Kotlin.
+
+KCAL_PER_KG = 7700.0          # ~3500 kcal/lb = 32.2 MJ/kg, the conventional rule examined by Hall 2008
+TREND_ALPHA = 0.1             # Hacker's Diet: exponentially smoothed moving average, 10% smoothing
+PAL = {"light": 1.55, "active": 1.85, "vigorous": 2.20}   # ASSUMPTION: midpoints of the FAO/WHO/UNU 2001 bands
+E_MIN_FACTOR = 1.0            # ASSUMPTION: expenditure is never estimated below resting energy
+E_MAX_FACTOR = 2.5            # ASSUMPTION: FAO/WHO/UNU 2001 say PAL > 2.40 is difficult to maintain; widened for error
+WINDOW_DAYS = 21              # ASSUMPTION: expenditure looks back 21 days
+MIN_LOGGED_DAYS = 14          # ASSUMPTION
+MIN_WEIGHED_DAYS = 8          # ASSUMPTION
+MIN_WEIGH_SPAN = 14           # ASSUMPTION: first and last weigh-in in the window at least 14 days apart
+BLEND = 0.5                   # ASSUMPTION: each check-in moves the estimate halfway to what the data imply
+MAX_STEP_KCAL = 200.0         # ASSUMPTION: largest drop in the kcal target per check-in (rule of command 3)
+PROTEIN_G_PER_KG = 1.6        # Morton et al. 2018: no further FFM gain beyond 1.62 g/kg/day
+FAT_SHARE = 0.25              # ASSUMPTION inside the IOM 2005 AMDR of 20-35 % of energy
+MAX_LOSS_RATE = 0.01          # Helms et al. 2014: 0.5-1 % of body weight per week
+MAX_GAIN_RATE = 0.005         # ASSUMPTION
+
+
+def weekday(day: int) -> int:
+    """ISO weekday, Monday = 1 ... Sunday = 7."""
+    return (day + 3) % 7 + 1
+
+
+def resting_energy(weight_kg: float, height_cm: float, age_y: float, male: bool) -> float:
+    """Mifflin-St Jeor 1990: REE = 10 W + 6.25 H - 5 A + 5 (men) or - 161 (women), kcal/day."""
+    return 10.0 * weight_kg + 6.25 * height_cm - 5.0 * age_y + (5.0 if male else -161.0)
+
+
+def daily_weights(weigh_ins: Sequence[tuple[int, float]]) -> dict[int, float]:
+    """Mean weigh-in per day."""
+    acc: dict[int, list[float]] = {}
+    for d, kg in weigh_ins:
+        acc.setdefault(d, []).append(kg)
+    return {d: sum(v) / len(v) for d, v in sorted(acc.items())}
+
+
+def trend_series(weigh_ins: Sequence[tuple[int, float]]) -> dict[int, float]:
+    """Trend weight for every day from the first weigh-in to the last. Gaps are filled by straight lines between
+    weigh-ins (ASSUMPTION), then T_d = T_(d-1) + 0.1 (w_d - T_(d-1)), starting at the first weigh-in."""
+    w = daily_weights(weigh_ins)
+    if not w:
+        return {}
+    days = sorted(w)
+    filled = {days[-1]: w[days[-1]]}
+    for a, b in zip(days, days[1:]):
+        for d in range(a, b):
+            filled[d] = w[a] + (w[b] - w[a]) * (d - a) / (b - a)
+    out: dict[int, float] = {}
+    t = None
+    for d in range(days[0], days[-1] + 1):
+        t = filled[d] if t is None else t + TREND_ALPHA * (filled[d] - t)
+        out[d] = t
+    return out
+
+
+def trend_at(trend: dict[int, float], day: int) -> float | None:
+    """Trend on the latest day at or before `day` (it holds flat after the last weigh-in)."""
+    best = None
+    for d in trend:
+        if d <= day and (best is None or d > best):
+            best = d
+    return None if best is None else trend[best]
+
+
+def weight_slope(weights: dict[int, float], first: int, last: int) -> float | None:
+    """Least-squares slope (kg/day) of the daily weigh-ins between `first` and `last` inclusive, or None when there
+    are fewer than MIN_WEIGHED_DAYS of them or they span less than MIN_WEIGH_SPAN days."""
+    pts = [(d, kg) for d, kg in weights.items() if first <= d <= last]
+    if len(pts) < MIN_WEIGHED_DAYS or max(d for d, _ in pts) - min(d for d, _ in pts) < MIN_WEIGH_SPAN:
+        return None
+    mx = sum(d for d, _ in pts) / len(pts)
+    my = sum(kg for _, kg in pts) / len(pts)
+    sxx = sum((d - mx) ** 2 for d, _ in pts)
+    return sum((d - mx) * (kg - my) for d, kg in pts) / sxx
+
+
+@dataclass(frozen=True)
+class FuelProfile:
+    male: bool
+    age_y: float
+    height_cm: float
+    start_weight_kg: float
+    activity: str              # key of PAL
+    rate: float                # goal, fraction of body weight per week; negative = lose
+    start_day: int
+    check_in_weekday: int = 1  # Monday
+
+
+def clamp_rate(rate: float) -> float:
+    return max(-MAX_LOSS_RATE, min(MAX_GAIN_RATE, rate))
+
+
+@dataclass(frozen=True)
+class CheckIn:
+    day: int
+    trend_kg: float
+    rest_kcal: float
+    expenditure: float
+    observed: float | None     # expenditure implied by the last WINDOW_DAYS, if there was enough data
+    weekly_rate: float | None  # observed weight change, fraction of body weight per week
+    kcal: float
+    protein_g: float
+    fat_g: float
+    carb_g: float
+    floor_applied: bool
+    step_limited: bool
+
+
+def macros(kcal: float, weight_kg: float) -> tuple[float, float, float]:
+    protein = PROTEIN_G_PER_KG * weight_kg
+    fat = FAT_SHARE * kcal / 9.0
+    carb = max(0.0, kcal - 4.0 * protein - 9.0 * fat) / 4.0
+    return protein, fat, carb
+
+
+def fuel_check_ins(profile: FuelProfile, weigh_ins: Sequence[tuple[int, float]], intake: dict[int, float],
+                   through_day: int) -> list[CheckIn]:
+    """Targets at the start day and at every check-in weekday after it, up to `through_day`.
+    `intake` holds the kcal eaten on each fully logged day; other days are absent."""
+    weights = daily_weights(weigh_ins)
+    trend = trend_series(weigh_ins)
+    rate = clamp_rate(profile.rate)
+    out: list[CheckIn] = []
+    for c in range(profile.start_day, through_day + 1):
+        if c != profile.start_day and weekday(c) != profile.check_in_weekday:
+            continue
+        w = trend_at(trend, c)
+        w = profile.start_weight_kg if w is None else w
+        ree = resting_energy(w, profile.height_cm, profile.age_y, profile.male)
+        first, last = c - WINDOW_DAYS, c - 1
+        slope = weight_slope(weights, first, last)
+        weekly = None if slope is None else slope * 7.0 / w
+        observed = None
+        if not out:
+            e = ree * PAL[profile.activity]
+        else:
+            e = out[-1].expenditure
+            logged = [intake[d] for d in range(first, last + 1) if d in intake]
+            if slope is not None and len(logged) >= MIN_LOGGED_DAYS:
+                observed = sum(logged) / len(logged) - KCAL_PER_KG * slope
+                e = e + BLEND * (observed - e)
+        e = min(max(e, E_MIN_FACTOR * ree), E_MAX_FACTOR * ree)
+        kcal = e + rate * w * KCAL_PER_KG / 7.0
+        limited = False
+        if out and kcal < out[-1].kcal - MAX_STEP_KCAL:
+            kcal = out[-1].kcal - MAX_STEP_KCAL   # targets may rise at once but fall at most 200 kcal per check-in
+            limited = True
+        floor = kcal < ree
+        kcal = max(kcal, ree)
+        p, f, cb = macros(kcal, w)
+        out.append(CheckIn(c, w, ree, e, observed, weekly, kcal, p, f, cb, floor, limited))
+    return out
+
+
+def targets_on(check_ins: Sequence[CheckIn], day: int) -> CheckIn | None:
+    """The check-in in force on `day`: the latest one on or before it."""
+    best = None
+    for ci in check_ins:
+        if ci.day <= day:
+            best = ci
+    return best
+
+
+FAST_LOSS_RATE = -MAX_LOSS_RATE   # Helms et al. 2014 upper bound; faster than this triggers an "eat to target" order
+
+
+def losing_too_fast(ci: CheckIn | None) -> bool:
+    return ci is not None and ci.weekly_rate is not None and ci.weekly_rate < FAST_LOSS_RATE
+
