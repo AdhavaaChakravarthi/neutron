@@ -1,6 +1,6 @@
-# Neutron: instructions for Claude
+# Commander: instructions for Claude
 
-You are a senior Android engineer with a working knowledge of sleep science, building **Neutron**: a personal, sideloaded Android app that estimates sleep need and sleep debt and predicts the user's daily energy curve. One user, one phone (no wearable). It is inspired by apps like Rise but must not copy their branding, UI, copy or methods.
+You are a senior Android engineer with a working knowledge of sleep science, building **Commander**: a personal, sideloaded Android app that gives its user daily orders, starting with sleep and energy (sleep need, sleep debt, energy curve) and later training, nutrition, mobility and a gut log. One user, one phone (no wearable). The user follows its orders for 7 months, so the **Rules of command in SPEC.md are non-negotiable** for every module. It is inspired by apps like Rise but must not copy their branding, UI, copy or methods.
 
 ## Source of truth
 
@@ -21,11 +21,12 @@ Read these before changing anything; keep them current when you change behaviour
 5. **Privacy:** no `INTERNET` permission, no analytics, no third-party SDKs that phone home.
 6. **Copy:** wellness language only. Never claim to diagnose, treat or detect a sleep disorder.
 7. **One phase at a time,** in the order in ARCHITECTURE.md. Don't start a phase that an open decision blocks.
+8. **New modules** (training, nutrition, mobility, gut log) start with a sourced spec in MODEL.md style, not code. Health guidance must be mainstream and conservative; nothing extreme, nothing diagnostic.
 
 ## Stack
 
-Kotlin, Jetpack Compose (Material 3), MVVM, Hilt, Room, DataStore, WorkManager, AlarmManager, Health Connect client, `UsageStatsManager`. minSdk 34. Versions pinned in `gradle/libs.versions.toml`.
+Kotlin, Jetpack Compose (Material 3), MVVM, DataStore, Room (Phase 3), Hilt (Phase 3), WorkManager, AlarmManager, Health Connect client, `UsageStatsManager`. minSdk 34. Versions pinned in `gradle/libs.versions.toml`.
 
 ## Environment note
 
-The cloud workspace can't reach Google Maven, Maven Central or Gradle's servers. Android builds run in GitHub Actions; push and read CI results rather than claiming a build passed.
+The cloud workspace can't reach Google Maven, Maven Central or Gradle's servers. Android builds run in GitHub Actions; push and read CI results rather than claiming a build passed. Pure-Kotlin code (`:model`, `app/.../orders`) can be compiled and tested locally with a Kotlin compiler downloaded from JetBrains' GitHub releases plus a small JUnit stand-in.

@@ -1,8 +1,33 @@
-# Neutron spec (v1)
+# Commander spec
 
-Neutron is a personal Android app that estimates your sleep need and sleep debt and shows when in the day you're likely to feel sharp or sleepy. It is for one user, sideloaded, and never leaves the phone. The science and every number behind it are in [MODEL.md](MODEL.md); open choices are in [DECISIONS.md](DECISIONS.md).
+Commander is a personal Android app that gives you orders for your day: when to wake, when you'll be sharpest, when to stop caffeine, when to wind down and when to sleep. You follow it for 7 months (October 2026 to May 2027). It is for one user, sideloaded, and never leaves the phone. The science and every number behind it are in [MODEL.md](MODEL.md); every choice is in [DECISIONS.md](DECISIONS.md).
 
-## Scope
+## Rules of command
+
+Following every order for 7 months only works if no order can hurt you and every order can be checked. These rules bind every module, now and later.
+
+1. **Every order says why.** Each one comes from published research or a labelled assumption, and the reason is one tap away.
+2. **Estimates are labelled.** Anything the model guesses (peak window, melatonin rise) is marked as an estimate.
+3. **No sudden changes.** Sleep: bedtime and wake time move at most 30 min a day. Later modules: training load rises gradually, food rules stay moderate, nothing extreme.
+4. **Aim for enough, never less.** Bedtime aims for your full sleep need. No module may order less sleep, a crash diet or training through pain.
+5. **You report back and the Commander adjusts.** When a prediction doesn't match how you feel, the plan changes, not you.
+6. **Pain, illness or exhaustion means stand down.** If you follow orders and still feel exhausted for weeks, the Commander says to see a doctor.
+7. **No guilt mechanics.** A skipped order is logged, not punished. No streaks to protect.
+8. **Wellness, not medicine.** Nothing diagnoses or treats a condition.
+
+## Modules
+
+| Module | Status |
+|---|---|
+| Sleep and energy | v1, below. First app build is out (Phase 2): orders from your usual schedule |
+| Training | Planned. Spec with sourced rules before any code |
+| Nutrition | Planned. Same |
+| Mobility | Planned. Same |
+| Gut log | Planned. Logging and patterns only, no diagnosis |
+
+The order of the later modules is open; ARCHITECTURE.md lists the phases.
+
+## Sleep and energy: scope
 
 **In v1**
 
@@ -20,17 +45,18 @@ Neutron is a personal Android app that estimates your sleep need and sleep debt 
 
 ### Onboarding (first launch only)
 
-1. **What Neutron is.** One screen: estimates based on published sleep research, a wellness tool not a medical device, data stays on the phone.
+1. **What Commander is.** One screen: estimates based on published sleep research, a wellness tool not a medical device, data stays on the phone.
 2. **Your usual schedule.** Typical bedtime and wake time for workdays and days off; target wake time. These seed the first week before real nights exist.
 3. **Permissions,** each with a one-line reason and a skip:
-   - Usage access (screen events) → "so Neutron can tell when you put your phone down and picked it up". Skipping means manual logging.
-   - Health Connect sleep (read) → "if another app or a future watch records sleep, Neutron uses it".
+   - Usage access (screen events) → "so Commander can tell when you put your phone down and picked it up". Skipping means manual logging.
+   - Health Connect sleep (read) → "if another app or a future watch records sleep, Commander uses it".
    - Notifications → "for the morning check-in and nudges".
 
 ### Today (home)
 
-- **Energy curve** for today's waking hours with a "now" marker, shaded zones (grogginess, peak, sleepy) and markers for caffeine cutoff, melatonin rise (est.), wind-down and recommended bedtime.
-- **Right now:** one line, e.g. "Peak window until 5:20 pm".
+- **Right now:** one line, e.g. "Sharpest until 7:20 pm. Do the hard thing."
+- **Energy curve** from waking to lights out with a "now" marker, shaded zones (groggy, sharpest, wind down) and the sleepiness line.
+- **Today's orders,** in time order, each with its reason on tap: Up and get light; Groggy; Sharpest (estimate); Last caffeine; Melatonin rising (estimate); Wind down; Lights out; Up (tomorrow). Past orders dim.
 - **Sleep debt** in hours with its band (low / moderate / high) and a 14-night sparkline.
 - **Next nudge** with its time.
 - A text summary of the curve for TalkBack, e.g. "Groggy until 8:40 am. Peak 3:50 to 5:20 pm. Sleepy after 10:45 pm."
@@ -68,7 +94,7 @@ Toggle and time-offset for each nudge: caffeine cutoff (default 8 h before bedti
 
 **Every morning:** detection runs after the usual wake time → if confident, a check-in notification; if not, the check-in asks directly → confirmed night updates debt, need and today's curve → nudges are rescheduled.
 
-**Calibration:** KSS check-ins accumulate → after 20 ratings over 7 days, Neutron fits a personal curve, keeps it only if it predicts held-out ratings better, and says so on Today.
+**Calibration:** KSS check-ins accumulate → after 20 ratings over 7 days, Commander fits a personal curve, keeps it only if it predicts held-out ratings better, and says so on Today.
 
 **Travel:** time-zone change detected → curve stays in body time and moves toward local time at up to 1 h per day; Today shows "Adjusting to new time zone".
 

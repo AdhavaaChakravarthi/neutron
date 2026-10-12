@@ -1,8 +1,8 @@
-# Neutron model
+# Commander model
 
-How Neutron turns sleep history into a sleep-need estimate, a sleep-debt number and a daily energy curve. Every parameter has a source or is labelled **ASSUMPTION** or **RECONSTRUCTED**. The executable version is `tools/model-reference/neutron_model.py`; `check_model.py` runs the behavioural checks below.
+How Commander turns sleep history into a sleep-need estimate, a sleep-debt number and a daily energy curve. Every parameter has a source or is labelled **ASSUMPTION** or **RECONSTRUCTED**. The executable version is `tools/model-reference/commander_model.py`; `check_model.py` runs the behavioural checks below.
 
-Neutron is a personal wellness tool. Nothing here diagnoses or treats a sleep disorder.
+Commander is a personal wellness tool. Nothing here diagnoses or treats a sleep disorder.
 
 ---
 
@@ -43,8 +43,8 @@ With default parameters, a steady 23:30–07:30 sleeper wakes at A ≈ 6.4 (belo
 
 Two things matter for the product:
 
-- **No afternoon dip or evening second wind.** The 12-hour component is too small to beat the rising circadian term, so the curve flattens around 11:30–14:00 but never turns down. A Rise-style "two peaks and a dip" curve is not what this model predicts with its published defaults. → open decision **OD-1** in DECISIONS.md.
-- **Short nights barely accumulate.** Five nights of 6 h lower the mean daytime value only from 11.60 to 11.33, and day 5 looks like day 1. One 9 h night fully restores it. This is a known weakness of two-process-type models: they don't predict the effects of chronic restriction [14, 15], which Van Dongen et al. showed are cumulative and dose-dependent over 14 days [5], and which one recovery night does not reverse [6]. → open decision **OD-2**.
+- **No afternoon dip or evening second wind.** The 12-hour component is too small to beat the rising circadian term, so the curve flattens around 11:30–14:00 but never turns down. A Rise-style "two peaks and a dip" curve is not what this model predicts with its published defaults. → **D-25**: keep the published curve; your sleepiness ratings decide whether you have a dip.
+- **Short nights barely accumulate.** Five nights of 6 h lower the mean daytime value only from 11.60 to 11.33, and day 5 looks like day 1. One 9 h night fully restores it. This is a known weakness of two-process-type models: they don't predict the effects of chronic restriction [14, 15], which Van Dongen et al. showed are cumulative and dose-dependent over 14 days [5], and which one recovery night does not reverse [6]. → **D-26**: debt is shown beside the curve, not baked into it; a chronic-restriction model is evaluated for a later version.
 
 ## 3. Sleep need
 
@@ -64,34 +64,40 @@ Checks that pass: 14 × 8 h at need 8 h → 0; 14 × 7 h → 7.5 h; a short nigh
 
 ## 5. Personalisation
 
-**Circadian phase p.** Default p = 16.8 h [3]. For a first guess, Neutron shifts p by how far the user's habitual mid-sleep is from 03:00 (**ASSUMPTION**: the default is treated as belonging to a ~23:00–07:00 sleeper), clamped to 13–21 h. Ingre et al. found phase does vary with self-rated chronotype, from 14.61 h for the most morning-type group to 16.62 h for the most evening-type [3], so a personal p is justified; the mid-sleep mapping is not.
+**Circadian phase p.** Default p = 16.8 h [3]. For a first guess, Commander shifts p by how far the user's habitual mid-sleep is from 03:00 (**ASSUMPTION**: the default is treated as belonging to a ~23:00–07:00 sleeper), clamped to 13–21 h. Ingre et al. found phase does vary with self-rated chronotype, from 14.61 h for the most morning-type group to 16.62 h for the most evening-type [3], so a personal p is justified; the mid-sleep mapping is not.
 
 **Calibration (replaces the guess).** After at least 20 KSS ratings over at least 7 days, fit p and Ua by least squares against `KSS = 10.6 − 0.6·A`, regularised toward the defaults, and adopt the fit only if it lowers error on held-out ratings (**ASSUMPTION** for the thresholds). Caveat: in Van Dongen et al., subjective sleepiness levelled off while performance kept falling [5], so a curve fitted to how you feel can understate accumulated debt. That is one more reason debt is shown separately.
 
 ## 6. Phone-only sleep detection
 
-Without a wearable, Neutron infers a **rest period** (phone down → phone up) from screen events and asks the user to confirm it each morning.
+Without a wearable, Commander infers a **rest period** (phone down → phone up) from screen events and asks the user to confirm it each morning.
 
 - **Signal.** Screen-on events from `UsageStatsManager` (`UsageEvents.Event.SCREEN_INTERACTIVE`), binned into 5-minute counts over a window from 18:00 to 15:00 next day, re-centred on habitual mid-sleep for late sleepers (**ASSUMPTION**). Phase 3 must check on your phone whether notifications that light the screen inflate the count; if so, switch to unlock events (`KEYGUARD_HIDDEN`).
 - **Model.** Two Poisson rates, low inside the rest period and high outside; choose the start and end bins that maximise the likelihood, minimum 3 h. This follows SensibleSleep (Cuttone et al.), which used screen on/off events, tolerates the odd night-time phone check, and reported 0.89 accuracy against an activity-tracker armband [13]. On a synthetic night with a 3 a.m. check, the reference detector is within 5 minutes at both ends.
 - **Limits.** Screen-off is rest, not sleep [13]. Lying awake, reading a book, or a phone left charging in another room all count as "asleep". The morning confirmation is the correction, so a confirmed night is the source of truth.
-- **Health Connect.** If any app has written a `SleepSessionRecord` for that night, Neutron uses it instead of inferring, and still asks for confirmation. I could not confirm that a phone without a wearable writes sleep sessions to Health Connect, so Neutron does not rely on it.
+- **Health Connect.** If any app has written a `SleepSessionRecord` for that night, Commander uses it instead of inferring, and still asks for confirmation. I could not confirm that a phone without a wearable writes sleep sessions to Health Connect, so Commander does not rely on it.
 - **Naps** are logged manually in v1. They feed Process S and count toward that day's sleep total (**ASSUMPTION**).
 
-## 7. Daily plan derived from the curve
+## 7. Daily orders derived from the curve
 
-| Item | Rule | Basis |
+Implemented in `plan_day` / `plan_for_schedule` (Python) and `planDay` / `planForSchedule` (Kotlin).
+
+| Order | Rule | Basis |
 |---|---|---|
-| Grogginess | Waking until W > −1 (≈ 69 min) | Process W [3]; the cut-off of 1 unit is an **ASSUMPTION** |
-| Peak window | Where A is within 0.5 of the day's maximum | **ASSUMPTION** |
-| Dip | Shown only if the (calibrated) curve has a real local minimum | §2 |
-| Sleepy | A < 7 | Sleepiness threshold [2] |
-| Recommended bedtime | Target wake − need − 15 min latency allowance, plus up to 30 min extra when debt is high | Need §3; 15 and 30 min are **ASSUMPTIONS** |
-| Earliest sensible bedtime | Warn if the recommendation is > 1 h before habitual sleep onset; suggest moving 30 min a night | Sleep is hardest in the 2–3 h before habitual bedtime, the "forbidden zone" [10]; the 1 h and 30 min figures are **ASSUMPTIONS** |
-| Melatonin rise (est.) | Habitual sleep onset − 2 h, shown with a wide margin | Sleep onset averages ≈ 2 h after melatonin onset, but the spread across people was 2.4 h in early sleepers and 4.5 h in late sleepers [9] |
-| Caffeine cutoff | 8 h before recommended bedtime, adjustable | 400 mg 6 h before bed still cut sleep by over an hour [11], so the cutoff must be earlier than 6 h; 8 h is an **ASSUMPTION** |
-| Morning light | Outdoor light within an hour of waking | Light after the circadian low advances the clock, light before it delays it [12]; the 1 h window is an **ASSUMPTION** |
-| Wind-down | Start 60 min before recommended bedtime; dim lights | Evening light delays the clock [12]; 60 min is an **ASSUMPTION** |
+| Up, then outside light | Light within 1 h of waking | Light after the circadian low advances the clock, light before it delays it [12]; the 1 h window is an **ASSUMPTION** |
+| Groggy | From waking until W > −1: ln(5.72)/1.51 ≈ 69 min | Process W [3]; the cut-off of 1 unit is an **ASSUMPTION** |
+| Sharpest (estimate) | Contiguous stretch around the day's maximum where A is within 0.5 of it, searched between the end of grogginess and lights out | **ASSUMPTION**. With default parameters this is wide (≈ 12:35–19:20 for a 23:30–07:30 sleeper) because the curve is nearly flat; shown with its peak time and labelled an estimate |
+| Dip (estimate) | Lowest strict local minimum in the same window, if any | §2; with default parameters there is none |
+| Sleepiness sets in (estimate) | First time after the peak that A < 7, if before wind-down | Sleepiness threshold [2] |
+| Next wake | Moves toward the target wake time, but at most 30 min earlier than the usual wake per day; a later target applies at once | Rule of command; 30 min is an **ASSUMPTION** |
+| Lights out | Next wake − need − 15 min to fall asleep − debt allowance (15 min if debt 2–5 h, 30 min if > 5 h), but never more than 30 min earlier than habitual sleep onset | Need §3. Moving bedtime earlier is limited because sleep is hardest to start in the 2–3 h before habitual bedtime, the "forbidden zone" [10]. 15 min, the debt allowances and 30 min are **ASSUMPTIONS** |
+| Last caffeine | 8 h before lights out | 400 mg 6 h before bed still cut sleep by over an hour [11], so the cutoff must be earlier than 6 h; 8 h is an **ASSUMPTION** |
+| Melatonin rising (estimate) | Habitual sleep onset − 2 h | Sleep onset averages ≈ 2 h after melatonin onset, but the spread across people was 2.4 h in early sleepers and 4.5 h in late sleepers [9] |
+| Wind down | 60 min before lights out; dim lights, screens away | Evening light delays the clock [12]; 60 min is an **ASSUMPTION** |
+
+**Before real nights exist** (until Phase 3), the history is 20 identical nights of the user's stated usual schedule, debt is 0, habitual onset is the stated bedtime, and p is the mid-sleep first guess from §5. Because "usual" doesn't update on its own yet, the 30-minute steps repeat the first step each day until the user updates their usual times or detection arrives.
+
+**Which day's orders.** Today's orders replace yesterday's 3 h before the usual wake time, so at 01:00 the screen still shows last night's lights out (**ASSUMPTION**).
 
 **Travel and DST.** p is kept in body time. After a time-zone change it re-entrains toward the new local time at no more than 1 h per day (**ASSUMPTION**, to be sourced before Phase 4). DST nights are 23 or 25 h long and must not create or remove sleep.
 
@@ -100,9 +106,9 @@ Without a wearable, Neutron infers a **rest period** (phone down → phone up) f
 `python3 tools/model-reference/check_model.py` currently reports:
 
 - **Pass (13):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check.
-- **Known limitations (3, reported every run, don't fail the build):** no afternoon dip/second wind; no accumulation across short nights; one recovery night fully restores. These are OD-1 and OD-2.
+- **Known limitations (3, reported every run, don't fail the build):** no afternoon dip/second wind; no accumulation across short nights; one recovery night fully restores. Decided in D-25 and D-26.
 
-Phase 2 generates golden vectors from this reference and the Kotlin `:model` module must match them to 1e-6.
+`python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
 
 ---
 

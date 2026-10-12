@@ -40,6 +40,24 @@ jobs:
       - name: Test, lint and build
         run: ./gradlew --stacktrace :model:test :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
 
+      - name: Count tests
+        id: tests
+        run: |
+          python3 - <<'EOF' > tests.txt
+          import glob, xml.etree.ElementTree as ET
+          def count(pattern):
+              total = bad = 0
+              for path in glob.glob(pattern):
+                  r = ET.parse(path).getroot()
+                  total += int(r.get("tests")); bad += int(r.get("failures")) + int(r.get("errors"))
+              return total - bad, total
+          mp, mt = count("model/build/test-results/test/*.xml")
+          ap, at = count("app/build/test-results/testReleaseUnitTest/*.xml")
+          print(f"Tests passed: model {mp}/{mt}, app {ap}/{at}")
+          EOF
+          cat tests.txt | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "summary=$(cat tests.txt)" >> "$GITHUB_OUTPUT"
+
       - name: APK must not ask for network access
         run: |
           AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
@@ -73,4 +91,4 @@ jobs:
           gh release create "v0.2.${{ github.run_number }}" "commander-${{ github.run_number }}.apk" \
             --target "${{ github.sha }}" \
             --title "Commander 0.2.${{ github.run_number }}" \
-            --notes "Built from ${{ github.sha }}. On your phone: download the APK, open it, allow the install."
+            --notes "Built from ${{ github.sha }}. ${{ steps.tests.outputs.summary }}. No network permission. On your phone: download the APK, open it, allow the install."
