@@ -20,9 +20,9 @@ Following every order for 7 months only works if no order can hurt you and every
 | Module | Status |
 |---|---|
 | Sleep and energy | Built: real nights, debt, need learning, rhythm stats, morning report, reminders |
-| Training | Planned. Spec with sourced rules before any code |
-| Nutrition | Planned. Same |
-| Mobility | Planned. Same |
+| Fuel (nutrition) | Built: food log on the USDA database, your foods and recipes, weigh-ins and trend, adaptive expenditure, weekly check-in, targets, weigh-in order (MODEL.md §10) |
+| Training | Planned: strength, triathlon (70.3) and mobility. Spec with sourced rules before any code |
+| Mobility | Planned, with Training |
 | Gut log | Planned. Logging and patterns only, no diagnosis |
 
 The order of the later modules is open; ARCHITECTURE.md lists the phases.
@@ -79,6 +79,18 @@ A card at the top of Today (and a notification 1 h after your usual wake) until 
 ### Sleep tab (built)
 
 Debt with its band and a 14-day bar chart against your need; need (learned or manual); rhythm (usual times, regularity, social jetlag, chronotype); detection status; log a night or nap; history you can fix or delete.
+
+### Fuel tab (built)
+
+- **Rations.** Calories left (or over) against today's target, bars for calories, protein, fat and carbs, fiber eaten, and carbs in g/kg beside the Burke et al. bands. On a fruit day: what you ate, no targets.
+- **Log.** Breakfast, lunch, dinner and snacks, each with its own add button. Tap an entry to change the amount or meal, or delete it. Quick add (calories and optional macros), copy yesterday, and a "not fully logged" switch that keeps the day out of the expenditure estimate.
+- **Add food.** Search your foods, your recipes and 7,448 USDA foods offline; recent foods first. Filters for no meat, vegan and fruit only start from the day's practice and can be changed. Pick a serving or grams, see the numbers, log. Stays open so a meal of several foods is quick.
+- **Your foods and recipes.** A food from a label, per 100 g or per serving, tagged plant, dairy or egg, fish, or meat. A recipe from ingredients, with the cooked weight and number of servings.
+- **Weight.** Today's weigh-in, trend, 7-day change, and six weeks of weigh-ins (dots) with the trend (line). A weigh-in more than 3 kg from the trend asks you to check it.
+- **Coach.** What you burn, goal, daily target, resting energy, measured weekly change, next check-in, and one or two sentences on why the target moved. Losing faster than 1% a week turns into an amber "eat to target" note and order.
+- **Setup.** Sex (for the equation), birth year, height, this morning's weight, activity band, goal, check-in day, and your practices: fruit days, vegan days, fish but no meat. A health note says who should check with a doctor or dietitian first.
+
+On Today, Fuel adds the weigh-in order (15 min after waking; "Log weight" right on the order), the eat-to-target order when it applies, and a fuel line in the mission brief.
 
 ### Morning check-in (original plan)
 

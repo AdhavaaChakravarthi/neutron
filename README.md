@@ -1,8 +1,8 @@
 # Commander
 
-A personal Android app that gives you orders for your day: when to wake, when you'll be sharpest, when to stop caffeine, when to wind down and when to sleep. Built on published sleep research; every number is sourced in [MODEL.md](MODEL.md). Training, nutrition, mobility and a gut log come later, one module at a time.
+A personal Android app that gives you orders for your day: when to wake, when you'll be sharpest, when to stop caffeine, when to wind down and when to sleep, and what to eat to reach your weight goal. Built on published research; every number is sourced in [MODEL.md](MODEL.md). Training (strength, triathlon, mobility) and a gut log come next, one module at a time.
 
-**Status:** orders from your usual schedule, with reminders at the right minute and a tactical HUD. Real-night detection is next (Phase 3).
+**Status:** Sleep (real nights from phone use, debt, need learning, rhythm, morning report, reminders) and Fuel (food log, recipes, weigh-ins, adaptive expenditure, weekly targets).
 
 **Install:** open the latest release on your phone (Releases, right side of the repo page), download the `.apk`, open it and allow the install. Each new release installs over the last one.
 
@@ -29,3 +29,5 @@ Build the app (needs JDK 17 and the Android SDK):
 Commander is a wellness tool, not a medical device.
 
 Bundles JetBrains Mono under the SIL Open Font License 1.1 (`third_party/JetBrainsMono-OFL.txt`).
+
+Food data: USDA Agricultural Research Service, National Nutrient Database for Standard Reference, Legacy Release (SR Legacy), which is in the public domain. Only the values are bundled (`app/src/main/assets/foods.tsv.gz`, rebuilt with `tools/food-db/build_food_db.py`).

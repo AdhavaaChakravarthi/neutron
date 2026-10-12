@@ -206,8 +206,10 @@ fun RecipeEditor(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Text(ing.food.name, style = HudType.small, color = Hud.ink, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                        Text("${ing.grams.roundToInt()} g", style = HudType.value, color = Hud.muted)
-                        Text(kcalText(nutrientsFor(ing.food, ing.grams).kcal), style = HudType.value, color = Hud.ink)
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${kcalText(nutrientsFor(ing.food, ing.grams).kcal)} kcal", style = HudType.value, color = Hud.ink)
+                            Text("${ing.grams.roundToInt()} g", style = HudType.label, color = Hud.muted)
+                        }
                     }
                 }
                 OutlinedButton(onClick = { onPickIngredient { items += it } }) { Text("+ INGREDIENT") }

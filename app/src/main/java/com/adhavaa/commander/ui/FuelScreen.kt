@@ -277,7 +277,7 @@ private fun LogPanel(ui: FuelUi, actions: FuelActions) {
                 for (e in items) EntryRow(e) { actions.onEditEntry(e) }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+        FlowRowCompat {
             OutlinedButton(onClick = { actions.onAddFood(defaultMeal()) }) { Text("+ FOOD") }
             OutlinedButton(onClick = { actions.onQuickAdd(defaultMeal()) }) { Text("QUICK ADD") }
             OutlinedButton(onClick = actions.onCopyYesterday) { Text("COPY YESTERDAY") }

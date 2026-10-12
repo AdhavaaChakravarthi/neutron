@@ -144,13 +144,14 @@ fun TargetBar(label: String, eaten: Double, target: Double?, unit: String, color
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row {
             Text(label.uppercase(), style = HudType.label, color = Hud.muted, modifier = Modifier.weight(1f))
+            val num: (Double) -> String = { if (unit == "kcal") kcalText(it) else it.roundToInt().toString() }
             Text(
-                if (target != null) "${eaten.roundToInt()} / ${target.roundToInt()} $unit" else "${eaten.roundToInt()} $unit",
+                if (target != null) "${num(eaten)} / ${num(target)} $unit" else "${num(eaten)} $unit",
                 style = HudType.value,
                 color = if (over) Hud.amber else Hud.ink,
             )
         }
-        Box(
+        if (target != null) Box(
             Modifier
                 .fillMaxWidth()
                 .height(6.dp)
