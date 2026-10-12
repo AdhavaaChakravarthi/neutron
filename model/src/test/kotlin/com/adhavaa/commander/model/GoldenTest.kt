@@ -104,4 +104,57 @@ class GoldenTest {
             assertEquals("$name.wake_step_limited", outputs.getValue("wake_step_limited") == "1", plan.wakeStepLimited)
         }
     }
+
+    @Test
+    fun historyMatchesReference() {
+        val eps = File(dir, "history_episodes.csv").readLines().drop(1).filter { it.isNotBlank() }.map { it.split(",") }
+        val lines = File(dir, "history.csv").readLines()
+        val cols = lines.first().split(",")
+        assertTrue("no history cases", lines.size > 1)
+        for (line in lines.drop(1).filter { it.isNotBlank() }) {
+            val v = line.split(",")
+            fun col(name: String) = v[cols.indexOf(name)]
+            val name = v[0]
+            val mine = eps.filter { it[0] == name }
+            val nights = mine.filter { it[1] == "N" }.map { Episode(it[2].toDouble(), it[3].toDouble()) }
+            val natural = mine.filter { it[1] == "N" }.map { it[4] == "1" }
+            val naps = mine.filter { it[1] == "P" }.map { Episode(it[2].toDouble(), it[3].toDouble()) }
+            val skipped = mine.filter { it[1] == "S" }.map { it[2].toDouble().toInt() }
+            val today = v[1].toInt()
+            val free = nums(col("free_days")).map { it.toInt() }
+            val need = v[4].toDouble()
+
+            val tst = dailySleep(nights, naps, skipped, today)
+            assertEquals("$name daily count", nums(col("daily_sleep")).size, tst.size)
+            nums(col("daily_sleep")).zip(tst).forEach { (e, a) -> near("$name daily", e, a) }
+            val debt = sleepDebt(tst, need)
+            near("$name debt", v[5].toDouble(), debt)
+
+            val plan = planFromHistory(nights, naps, today, v[2].toDouble(), v[3].toDouble(), need, debt, v[6].ifBlank { null }?.toDouble())
+            val got = mapOf(
+                "p" to plan.p, "wake" to plan.wake, "light_until" to plan.lightUntil, "groggy_until" to plan.groggyUntil,
+                "peak_start" to plan.peakStart, "peak_at" to plan.peakAt, "peak_end" to plan.peakEnd,
+                "caffeine_cutoff" to plan.caffeineCutoff, "melatonin_rise" to plan.melatoninRise, "wind_down" to plan.windDown,
+                "ideal_lights_out" to plan.idealLightsOut, "lights_out" to plan.lightsOut,
+                "target_wake" to plan.targetWake, "next_wake" to plan.nextWake,
+            )
+            // output "wake" is the second column named wake; read it positionally after "p"
+            val outStart = cols.indexOf("p")
+            val outCols = cols.subList(outStart, outStart + 18)
+            val outVals = v.subList(outStart, outStart + 18)
+            val outputs = outCols.zip(outVals).toMap()
+            for ((k, value) in got) near("$name.$k", outputs.getValue(k).toDouble(), value)
+            assertEquals("$name bed limited", outputs.getValue("bed_step_limited") == "1", plan.bedStepLimited)
+            assertEquals("$name wake limited", outputs.getValue("wake_step_limited") == "1", plan.wakeStepLimited)
+
+            near("$name need", col("need_learned").toDouble(), needFromHistory(nights, natural, naps, skipped))
+            fun opt(c: String, actual: Double?) {
+                val e = col(c)
+                if (e.isBlank()) assertNull("$name.$c", actual) else near("$name.$c", e.toDouble(), actual!!)
+            }
+            opt("sri", sleepRegularityIndex(nights, naps, today))
+            opt("sjl", socialJetlag(nights, free))
+            opt("msfsc", chronotypeMsfsc(nights, natural, free, 2))
+        }
+    }
 }

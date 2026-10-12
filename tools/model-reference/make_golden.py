@@ -10,8 +10,9 @@ import random
 import sys
 from pathlib import Path
 
-from commander_model import (Episode, TpmParams, detect_rest_period, estimate_need, personal_acrophase,
-                             plan_for_schedule, schedule_episodes, simulate, sleep_debt)
+from commander_model import (Episode, TpmParams, chronotype_msfsc, daily_sleep, detect_rest_period, estimate_need,
+                             need_from_history, personal_acrophase, plan_for_schedule, plan_from_history,
+                             schedule_episodes, simulate, sleep_debt, sleep_regularity_index, social_jetlag)
 
 OUT = Path(__file__).resolve().parent / "golden"
 TOL = 1e-8
@@ -109,7 +110,64 @@ def files() -> dict[str, str]:
         vals = [getattr(p, k) for k in fields]
         plan_rows.append(f"{name},{f(b)},{f(w)},{f(n)},{f(d)},{f(tw)},20," + ",".join(f(v) for v in vals))
     out["plan.csv"] = "\n".join(plan_rows) + "\n"
+
+    # --- real nights --------------------------------------------------------
+    hist_cases = history_cases()
+    ep_rows = ["case,kind,start,end,natural"]
+    h_rows = ["case,today,usual_bed,usual_wake,need,debt,target_wake,free_days," + ",".join(fields)
+              + ",daily_sleep,need_learned,sri,sjl,msfsc"]
+    for name, c in hist_cases.items():
+        for e, nat in zip(c["nights"], c["natural"]):
+            ep_rows.append(f"{name},N,{f(e.start)},{f(e.end)},{f(nat)}")
+        for e in c["naps"]:
+            ep_rows.append(f"{name},P,{f(e.start)},{f(e.end)},0")
+        for d in c["skipped"]:
+            ep_rows.append(f"{name},S,{f(float(d))},{f(float(d))},0")
+        today = c["today"]
+        tst = daily_sleep(c["nights"], c["naps"], c["skipped"], today)
+        debt = sleep_debt(tst, c["need"])
+        plan = plan_from_history(c["nights"], c["naps"], today, c["bed"], c["wake"], c["need"], debt, c["target"])
+        vals = [getattr(plan, k) for k in fields]
+        h_rows.append(
+            f"{name},{today},{f(c['bed'])},{f(c['wake'])},{f(c['need'])},{f(debt)},{f(c['target'])},"
+            f"{' '.join(str(d) for d in c['free'])}," + ",".join(f(v) for v in vals) + ","
+            + " ".join(f(x) for x in tst) + ","
+            + f"{f(need_from_history(c['nights'], c['natural'], c['naps'], c['skipped']))},"
+            + f"{f(sleep_regularity_index(c['nights'], c['naps'], today))},"
+            + f"{f(social_jetlag(c['nights'], c['free']))},"
+            + f"{f(chronotype_msfsc(c['nights'], c['natural'], c['free'], 2))}")
+    out["history_episodes.csv"] = "\n".join(ep_rows) + "\n"
+    out["history.csv"] = "\n".join(h_rows) + "\n"
     return out
+
+
+def history_cases() -> dict:
+    cases = {}
+    # Someone at 01:00-07:00 who then follows lights-out orders for six nights.
+    prog = [Episode(24.0 * k + 1.0, 24.0 * k + 7.0) for k in range(1, 15)]
+    prog += [Episode(24.0 * k + s, 24.0 * k + 7.0) for k, s in zip(range(15, 21), [0.5, 0.0, -0.5, -1.0, -1.5, -1.75])]
+    cases["progression"] = dict(nights=prog, natural=[False] * len(prog), naps=[], skipped=[], today=20,
+                                bed=23.5, wake=7.5, need=8.0, target=None, free=[d for d in range(30) if d % 7 in (5, 6)])
+    # Irregular nights with naps, a sleepless night, weekend lie-ins and an earlier wake target.
+    r = random.Random(21)
+    free = [d for d in range(40) if d % 7 in (5, 6)]
+    noisy, nat = [], []
+    for k in range(3, 23):
+        if k == 12:
+            continue
+        lie_in = 1.5 if k in free else 0.0
+        start = 24.0 * k - 0.75 + r.uniform(-0.75, 0.75) + (1.0 if k in free else 0.0)
+        end = 24.0 * k + 7.0 + r.uniform(-0.5, 0.5) + lie_in
+        noisy.append(Episode(start, end))
+        nat.append(k in free or r.random() < 0.3)
+    naps = [Episode(24.0 * 9 + 14.0, 24.0 * 9 + 14.4), Episode(24.0 * 18 + 13.5, 24.0 * 18 + 14.0)]
+    cases["noisy"] = dict(nights=noisy, natural=nat, naps=naps, skipped=[12], today=22,
+                          bed=23.0, wake=7.0, need=8.25, target=6.5, free=free)
+    # Only two recorded nights: habitual times fall back to the stated schedule.
+    sparse = [Episode(24.0 * 19 + 0.5, 24.0 * 19 + 8.0), Episode(24.0 * 20 + 0.25, 24.0 * 20 + 7.75)]
+    cases["sparse"] = dict(nights=sparse, natural=[True, False], naps=[], skipped=[], today=20,
+                           bed=23.5, wake=7.5, need=8.0, target=None, free=free)
+    return cases
 
 
 def same(a: str, b: str) -> bool:

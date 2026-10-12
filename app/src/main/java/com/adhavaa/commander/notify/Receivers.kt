@@ -4,13 +4,23 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.adhavaa.commander.container
+import com.adhavaa.commander.model.SleepKind
+import com.adhavaa.commander.model.SleepRecord
 import com.adhavaa.commander.orders.OrderKind
+import com.adhavaa.commander.orders.detectNight
+import com.adhavaa.commander.orders.detectionWindow
+import com.adhavaa.commander.orders.formatHours
+import com.adhavaa.commander.orders.hoursBetween
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneId
 
-/** An order alarm fired: show it (unless it is badly late), then schedule what comes next. */
+/** An order alarm fired: show it (unless badly late), then schedule what comes next. */
 class OrderReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != OrderScheduler.ACTION) return
@@ -19,6 +29,13 @@ class OrderReceiver : BroadcastReceiver() {
         } ?: return
         val at = intent.getLongExtra(OrderScheduler.EXTRA_AT, 0L)
         val late = System.currentTimeMillis() - at
+        if (kind == OrderKind.CHECK_IN) {
+            runAsync(this, context) {
+                if (late < STALE_MS) morningReport(context, at)
+                OrderScheduler.reschedule(context.applicationContext)
+            }
+            return
+        }
         if (late < STALE_MS) {
             OrderNotifier.post(
                 context,
@@ -28,7 +45,31 @@ class OrderReceiver : BroadcastReceiver() {
                 at,
             )
         }
-        rescheduleAsync(this, context)
+        runAsync(this, context) { OrderScheduler.reschedule(context.applicationContext) }
+    }
+
+    /** Detects last night from screen use (saving it unconfirmed) and asks for a ten-second confirmation. */
+    private suspend fun morningReport(context: Context, atMs: Long) {
+        val c = context.container()
+        val data = c.commandData()
+        val now = LocalDateTime.now()
+        val wakeDate = LocalDateTime.ofInstant(Instant.ofEpochMilli(atMs), ZoneId.systemDefault()).toLocalDate()
+        if (data.nightRecorded(wakeDate)) return
+        val fmt = OrderScheduler.timeFormatter(context)
+        val detected = if (PhoneUsage.hasAccess(context)) {
+            val w = detectionWindow(wakeDate, data.habitual(now))
+            detectNight(w, PhoneUsage.screenOnTimes(context, w.start, if (now.isBefore(w.end)) now else w.end), now)
+        } else {
+            null
+        }
+        val text = if (detected != null) {
+            c.sleep.save(SleepRecord(detected.start, detected.end, SleepKind.NIGHT), "PHONE", confirmed = false)
+            "Phone down ${fmt(detected.start)}, up ${fmt(detected.end)}: ${formatHours(hoursBetween(detected.start, detected.end))}. " +
+                "Tap to confirm or fix it."
+        } else {
+            "When did you sleep last night? Tap to log it."
+        }
+        OrderNotifier.post(context, OrderNotifier.idFor(OrderKind.CHECK_IN), "Morning report", text, atMs)
     }
 
     companion object {
@@ -41,7 +82,7 @@ class OrderReceiver : BroadcastReceiver() {
 class RescheduleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action !in HANDLED) return
-        rescheduleAsync(this, context)
+        runAsync(this, context) { OrderScheduler.reschedule(context.applicationContext) }
     }
 
     companion object {
@@ -54,15 +95,14 @@ class RescheduleReceiver : BroadcastReceiver() {
     }
 }
 
-private fun rescheduleAsync(receiver: BroadcastReceiver, context: Context) {
+private fun runAsync(receiver: BroadcastReceiver, context: Context, block: suspend () -> Unit) {
     val pending: BroadcastReceiver.PendingResult? = receiver.goAsync()
-    val app = context.applicationContext
     CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
         try {
-            OrderScheduler.reschedule(app)
+            block()
         } catch (e: Exception) {
-            // A failed reschedule must never crash a broadcast; the next app open or order rebuilds the alarms.
-            Log.w("Commander", "Rescheduling orders failed", e)
+            // A failure here must never crash a broadcast; the next app open or order rebuilds everything.
+            Log.w("Commander", "Order work failed for ${context.packageName}", e)
         } finally {
             pending?.finish()
         }

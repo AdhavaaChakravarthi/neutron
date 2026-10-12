@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -214,3 +215,10 @@ fun Modifier.contours(color: Color = Hud.contour, seed: Float = 0f, levels: Int 
     val stroke = Stroke(width = 1.dp.toPx())
     onDrawBehind { drawPath(path, color, style = stroke) }
 }
+
+/** True when the screen sits above Commander's bottom bar, which already handles the navigation-bar inset. */
+val LocalHasBottomBar = staticCompositionLocalOf { false }
+
+@Composable
+fun bottomPadding(insets: PaddingValues): Dp =
+    if (LocalHasBottomBar.current) 20.dp else insets.calculateBottomPadding() + 28.dp

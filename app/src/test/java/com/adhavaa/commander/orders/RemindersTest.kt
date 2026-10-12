@@ -44,9 +44,11 @@ class RemindersTest {
         assertFalse(reminders(steady, DEFAULT_REMINDERS, fmt).any { it.kind == OrderKind.MELATONIN })
     }
 
+    private fun data(s: Settings = settings) = CommandData(s, emptyList(), emptySet())
+
     @Test
     fun upcomingSkipsThePastAndRollsIntoTomorrow() {
-        val up = upcomingReminders(settings, at(12, 22, 30), fmt)
+        val up = upcomingReminders(data(), at(12, 22, 30), fmt)
         assertEquals(OrderKind.LIGHTS_OUT, up.first().kind)
         assertEquals(at(12, 23, 15), up.first().at)
         assertEquals(at(13, 7, 30), up[1].at)
@@ -57,14 +59,27 @@ class RemindersTest {
     @Test
     fun afterMidnightTheNightStillBelongsToYesterday() {
         val late = settings.copy(bedtime = LocalTime.of(1, 0), wake = LocalTime.of(7, 0))
-        val up = upcomingReminders(late, at(13, 0, 10), fmt)
+        val up = upcomingReminders(data(late), at(13, 0, 10), fmt)
         assertEquals(OrderKind.LIGHTS_OUT, up.first().kind)
         assertEquals(at(13, 0, 30), up.first().at)
     }
 
     @Test
     fun nothingBeforeOnboarding() {
-        assertTrue(upcomingReminders(settings.copy(onboarded = false), at(12, 10), fmt).isEmpty())
+        assertTrue(upcomingReminders(data(settings.copy(onboarded = false)), at(12, 10), fmt).isEmpty())
+    }
+
+    @Test
+    fun morningReportIsScheduledUntilTheNightIsRecorded() {
+        val up = upcomingReminders(data(), at(12, 6, 0), fmt)
+        val check = up.first { it.kind == OrderKind.CHECK_IN }
+        assertEquals(at(12, 8, 30), check.at)
+        val recorded = CommandData(
+            settings,
+            listOf(com.adhavaa.commander.model.SleepRecord(at(11, 23, 40), at(12, 7, 10), com.adhavaa.commander.model.SleepKind.NIGHT)),
+            emptySet(),
+        )
+        assertTrue(upcomingReminders(recorded, at(12, 7, 30), fmt).none { it.kind == OrderKind.CHECK_IN && it.at.toLocalDate() == day })
     }
 
     @Test

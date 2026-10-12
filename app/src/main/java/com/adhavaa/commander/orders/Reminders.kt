@@ -1,10 +1,6 @@
 package com.adhavaa.commander.orders
 
-import com.adhavaa.commander.data.Settings
 import com.adhavaa.commander.model.TodayOrders
-import com.adhavaa.commander.model.UsualSchedule
-import com.adhavaa.commander.model.ordersFor
-import com.adhavaa.commander.model.planDateFor
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
@@ -14,12 +10,13 @@ data class Reminder(val kind: OrderKind, val at: LocalDateTime, val title: Strin
 
 /** Orders that can send a reminder, in the order they happen in a day. */
 val REMINDABLE: List<OrderKind> = listOf(
-    OrderKind.WAKE, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.MELATONIN, OrderKind.WIND_DOWN, OrderKind.LIGHTS_OUT,
+    OrderKind.WAKE, OrderKind.CHECK_IN, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.MELATONIN, OrderKind.WIND_DOWN,
+    OrderKind.LIGHTS_OUT,
 )
 
 /** On by default. Melatonin is an estimate with no action of its own, so it starts off. DECISIONS.md D-38. */
 val DEFAULT_REMINDERS: Set<OrderKind> = setOf(
-    OrderKind.WAKE, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.WIND_DOWN, OrderKind.LIGHTS_OUT,
+    OrderKind.WAKE, OrderKind.CHECK_IN, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.WIND_DOWN, OrderKind.LIGHTS_OUT,
 )
 
 /** The caffeine reminder comes early so there is still time for a last cup. ASSUMPTION, DECISIONS.md D-38. */
@@ -32,6 +29,7 @@ fun reminderLabel(kind: OrderKind): String = when (kind) {
     OrderKind.MELATONIN -> "Melatonin rising"
     OrderKind.WIND_DOWN -> "Wind down"
     OrderKind.LIGHTS_OUT -> "Lights out"
+    OrderKind.CHECK_IN -> "Morning report (confirm last night)"
     else -> kind.name.lowercase()
 }
 
@@ -77,26 +75,30 @@ fun reminders(o: TodayOrders, enabled: Set<OrderKind>, fmt: (LocalDateTime) -> S
 }
 
 /**
- * Reminders after [now] for the current plan day and the next, soonest first. The receiver re-runs this every
- * time one fires, so the window keeps rolling forward.
+ * Reminders after [now] for the current plan day and the next, soonest first, including the morning report.
+ * The receiver re-runs this every time one fires, so the window keeps rolling forward.
  */
 fun upcomingReminders(
-    settings: Settings,
+    data: CommandData,
     now: LocalDateTime,
     fmt: (LocalDateTime) -> String,
     days: Int = 2,
     max: Int = MAX_SCHEDULED,
 ): List<Reminder> {
+    val settings = data.settings
     if (!settings.onboarded || settings.reminders.isEmpty()) return emptyList()
-    val usual = UsualSchedule(settings.bedtime, settings.wake)
-    val first = planDateFor(now, usual)
+    val first = data.planDate(now)
     return (0 until days)
         .flatMap { offset ->
-            val orders = ordersFor(
-                first.plusDays(offset.toLong()), usual,
-                needH = settings.needMinutes / 60.0, targetWake = settings.targetWake,
-            )
-            reminders(orders, settings.reminders, fmt)
+            val date = first.plusDays(offset.toLong())
+            val list = reminders(data.picture(date).orders, settings.reminders, fmt).toMutableList()
+            if (OrderKind.CHECK_IN in settings.reminders && !data.nightRecorded(date)) {
+                list += Reminder(
+                    OrderKind.CHECK_IN, checkInTime(data, date, now), "Morning report",
+                    "Confirm last night's sleep. It takes ten seconds.",
+                )
+            }
+            list
         }
         .filter { it.at.isAfter(now) }
         .sortedBy { it.at }

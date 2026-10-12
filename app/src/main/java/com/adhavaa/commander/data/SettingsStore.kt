@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import java.io.IOException
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -34,6 +35,8 @@ class SettingsStore(context: Context) {
         val need = intPreferencesKey("need_min")
         val reminders = stringSetPreferencesKey("reminders")
         val campaignStart = longPreferencesKey("campaign_start_epoch_day")
+        val needAuto = booleanPreferencesKey("need_auto")
+        val freeDays = stringSetPreferencesKey("free_days")
     }
 
     val settings: Flow<Settings> = store.data
@@ -51,6 +54,11 @@ class SettingsStore(context: Context) {
                     ?.toSet()
                     ?: DEFAULT_REMINDERS,
                 campaignStart = p[Keys.campaignStart]?.let(LocalDate::ofEpochDay),
+                needAuto = p[Keys.needAuto] ?: true,
+                freeDays = p[Keys.freeDays]
+                    ?.mapNotNull { name -> DayOfWeek.entries.firstOrNull { it.name == name } }
+                    ?.toSet()
+                    ?: Settings.DEFAULT_FREE_DAYS,
             )
         }
 
@@ -85,6 +93,14 @@ class SettingsStore(context: Context) {
 
     suspend fun setCampaignStart(date: LocalDate) {
         store.edit { it[Keys.campaignStart] = date.toEpochDay() }
+    }
+
+    suspend fun setNeedAuto(auto: Boolean) {
+        store.edit { it[Keys.needAuto] = auto }
+    }
+
+    suspend fun setFreeDays(days: Set<DayOfWeek>) {
+        store.edit { it[Keys.freeDays] = days.map { d -> d.name }.toSet() }
     }
 
     suspend fun resetOnboarding() {

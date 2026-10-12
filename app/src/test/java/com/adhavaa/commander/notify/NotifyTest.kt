@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.content.Intent
 import android.os.Looper
 import com.adhavaa.commander.data.Settings
+import com.adhavaa.commander.orders.CommandData
 import com.adhavaa.commander.orders.OrderKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -41,7 +42,7 @@ class NotifyTest {
 
     @Test
     fun reschedulingSetsOneAlarmPerUpcomingOrder() {
-        val upcoming = OrderScheduler.reschedule(app, settings, LocalDateTime.of(2026, 10, 12, 10, 0))
+        val upcoming = OrderScheduler.reschedule(app, CommandData(settings, emptyList(), emptySet()), LocalDateTime.of(2026, 10, 12, 10, 0))
         assertTrue("expected upcoming orders", upcoming.size >= 5)
         assertEquals(upcoming.size, alarms().size)
         assertEquals(OrderKind.PEAK, upcoming.first().kind)
@@ -49,14 +50,14 @@ class NotifyTest {
 
     @Test
     fun reschedulingReplacesRatherThanStacks() {
-        OrderScheduler.reschedule(app, settings, LocalDateTime.of(2026, 10, 12, 10, 0))
-        val second = OrderScheduler.reschedule(app, settings, LocalDateTime.of(2026, 10, 12, 22, 30))
+        OrderScheduler.reschedule(app, CommandData(settings, emptyList(), emptySet()), LocalDateTime.of(2026, 10, 12, 10, 0))
+        val second = OrderScheduler.reschedule(app, CommandData(settings, emptyList(), emptySet()), LocalDateTime.of(2026, 10, 12, 22, 30))
         assertEquals(second.size, alarms().size)
     }
 
     @Test
     fun noRemindersMeansNoAlarms() {
-        OrderScheduler.reschedule(app, settings.copy(reminders = emptySet()), LocalDateTime.of(2026, 10, 12, 10, 0))
+        OrderScheduler.reschedule(app, CommandData(settings.copy(reminders = emptySet()), emptyList(), emptySet()), LocalDateTime.of(2026, 10, 12, 10, 0))
         assertEquals(0, alarms().size)
     }
 

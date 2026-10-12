@@ -1,6 +1,11 @@
 package com.adhavaa.commander.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -37,6 +42,9 @@ import com.adhavaa.commander.orders.OrderKind
 import com.adhavaa.commander.orders.REMINDABLE
 import com.adhavaa.commander.orders.formatHours
 import com.adhavaa.commander.orders.reminderLabel
+import java.time.DayOfWeek
+import java.time.format.TextStyle
+import java.util.Locale
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -79,10 +87,13 @@ data class SettingsActions(
     val onTestOrder: () -> Unit = {},
     val onCampaignStart: (LocalDate) -> Unit = {},
     val onEnableNotifications: () -> Unit = {},
+    val onNeedAuto: (Boolean) -> Unit = {},
+    val onFreeDays: (Set<DayOfWeek>) -> Unit = {},
+    val onEnableDetection: () -> Unit = {},
 )
 
 @Composable
-fun SettingsScreen(state: UiState.Ready, actions: SettingsActions, notificationsAllowed: Boolean) {
+fun SettingsScreen(state: UiState.Ready, actions: SettingsActions, notificationsAllowed: Boolean, detectionOn: Boolean = false) {
     val s = state.settings
     val context = LocalContext.current
     val insets = WindowInsets.safeDrawing.asPaddingValues()
@@ -95,7 +106,7 @@ fun SettingsScreen(state: UiState.Ready, actions: SettingsActions, notifications
         contentPadding = PaddingValues(
             start = 14.dp, end = 14.dp,
             top = insets.calculateTopPadding() + 8.dp,
-            bottom = insets.calculateBottomPadding() + 32.dp,
+            bottom = bottomPadding(insets),
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -142,12 +153,53 @@ fun SettingsScreen(state: UiState.Ready, actions: SettingsActions, notifications
         }
         item {
             HudPanel(title = "Sleep need") {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                    OutlinedButton(onClick = { actions.onNeed(s.needMinutes - 15) }, enabled = s.needMinutes > Settings.MIN_NEED_MIN) { Text("− 15") }
-                    Text(formatHours(s.needMinutes / 60.0), style = HudType.headline, color = Hud.green)
-                    OutlinedButton(onClick = { actions.onNeed(s.needMinutes + 15) }, enabled = s.needMinutes < Settings.MAX_NEED_MIN) { Text("+ 15") }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Learn from my nights", style = HudType.body, color = Hud.ink, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = s.needAuto, onCheckedChange = actions.onNeedAuto,
+                        colors = SwitchDefaults.colors(checkedThumbColor = Hud.onMint, checkedTrackColor = Hud.green),
+                    )
                 }
-                Hint("Starts at 8 h. Adults need 7 h or more (AASM/SRS consensus); in one study young men given 12 h in bed for 9 nights settled at about 8.4 h. Commander will learn yours from nights you wake without an alarm.")
+                if (s.needAuto) {
+                    KeyValue("Current estimate", formatHours(state.stats.needH), Hud.green)
+                    Hint("Starts at 8 h and moves toward what you actually sleep on nights you wake without an alarm and aren't carrying much debt.")
+                } else {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        OutlinedButton(onClick = { actions.onNeed(s.needMinutes - 15) }, enabled = s.needMinutes > Settings.MIN_NEED_MIN) { Text("− 15") }
+                        Text(formatHours(s.needMinutes / 60.0), style = HudType.headline, color = Hud.green)
+                        OutlinedButton(onClick = { actions.onNeed(s.needMinutes + 15) }, enabled = s.needMinutes < Settings.MAX_NEED_MIN) { Text("+ 15") }
+                    }
+                }
+                Hint("Adults need 7 h or more (AASM/SRS consensus); in one study young men given 12 h in bed for 9 nights settled at about 8.4 h.")
+            }
+        }
+        item {
+            HudPanel(title = "Free days", subtitle = "Days without a fixed wake time") {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    for (d in DayOfWeek.entries) {
+                        val on = d in s.freeDays
+                        Text(
+                            d.getDisplayName(TextStyle.SHORT, Locale.getDefault()).uppercase(),
+                            style = HudType.label,
+                            color = if (on) Hud.onMint else Hud.muted,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (on) Hud.green else Hud.panelHi)
+                                .clickable(role = Role.Checkbox) { actions.onFreeDays(if (on) s.freeDays - d else s.freeDays + d) }
+                                .padding(vertical = 8.dp),
+                        )
+                    }
+                }
+                Hint("Used for social jetlag and chronotype, which compare sleep before free days with sleep before workdays.")
+            }
+        }
+        item {
+            HudPanel(title = "Automatic detection") {
+                KeyValue("Usage access", if (detectionOn) "On" else "Off", if (detectionOn) Hud.green else Hud.amber)
+                if (!detectionOn) HudButton("Allow usage access", actions.onEnableDetection)
+                Hint("Commander reads only when the screen turned on, to find when the phone went down and came back up. It never reads which apps you used.")
             }
         }
         item {
@@ -190,7 +242,7 @@ fun HudButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, 
         enabled = enabled,
         modifier = modifier.fillMaxWidth(),
         colors = ButtonDefaults.buttonColors(containerColor = Hud.green, contentColor = Hud.onMint),
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+        shape = RoundedCornerShape(6.dp),
     ) { Text(text.uppercase()) }
 }
 

@@ -12,10 +12,15 @@
         tools:ignore="ExactAlarm" />
     <!-- Alarms are cleared on reboot; rebuild them. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Sleep detection reads when the screen turned on (special "Usage access", granted in system settings). -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
     <!-- "Set alarm" opens the clock app with tomorrow's wake time filled in. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <application
+        android:name=".CommanderApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"

@@ -8,7 +8,7 @@ import kotlin.math.roundToInt
  * Turns [TodayOrders] into the words Commander says. Pure Kotlin (no Android) so it is unit-tested on the JVM.
  * Copy rules: imperative and short; every order carries its reason; estimates say so; wellness only.
  */
-enum class OrderKind { WAKE, GROGGY, PEAK, DIP, CAFFEINE, MELATONIN, WIND_DOWN, SLEEPY, LIGHTS_OUT, TOMORROW }
+enum class OrderKind { WAKE, GROGGY, PEAK, DIP, CAFFEINE, NAP, MELATONIN, WIND_DOWN, SLEEPY, LIGHTS_OUT, TOMORROW, CHECK_IN }
 
 data class Order(
     val kind: OrderKind,
@@ -60,8 +60,10 @@ fun buildOrders(o: TodayOrders, fmt: (LocalDateTime) -> String): List<Order> {
         ),
         Order(
             OrderKind.WIND_DOWN, o.windDown, o.lightsOut, "Wind down.",
-            "Dim the lights. Screens away. Nothing stressful.",
-            "Bright light in the evening pushes your body clock later. An hour of low light helps sleep come on time.",
+            "Dim the lights. Screens away. Nothing stressful. No hard training from now.",
+            "Bright light in the evening pushes your body clock later. An hour of low light helps sleep come on time. " +
+                "Evening exercise is fine for sleep in general, but vigorous exercise ending within an hour of bedtime " +
+                "can delay sleep (Stutz et al. 2019).",
         ),
         Order(
             OrderKind.LIGHTS_OUT, o.lightsOut, null, "Lights out.",
@@ -86,6 +88,15 @@ fun buildOrders(o: TodayOrders, fmt: (LocalDateTime) -> String): List<Order> {
                 "choice, not a measured limit.",
         ),
     )
+    if (o.debtH >= NAP_DEBT_H && o.caffeineCutoff.isAfter(o.groggyUntil)) {
+        list += Order(
+            OrderKind.NAP, o.groggyUntil, o.caffeineCutoff, "Nap allowed.",
+            "Up to 20 minutes, before ${fmt(o.caffeineCutoff)}. Set an alarm.",
+            "You're carrying sleep debt. Short naps restore alertness: in one study a 10-minute nap worked best and " +
+                "naps up to 30 minutes still helped (Brooks & Lack 2006). Ending by the caffeine cutoff keeps it from " +
+                "eating into tonight's sleep (an assumption).",
+        )
+    }
     o.dipAt?.let {
         list += Order(
             OrderKind.DIP, it, null, "Dip.", "Easy tasks or a short walk.",
@@ -116,6 +127,25 @@ fun statusLine(o: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) -> Strin
     else -> "Lights out. Up at ${fmt(o.nextWake)}."
 }
 
+/** Debt at which Commander allows a nap (the "moderate" band, MODEL.md section 4). */
+const val NAP_DEBT_H = 2.0
+
+fun debtBand(h: Double): String = when {
+    h < 2.0 -> "Low"
+    h <= 5.0 -> "Moderate"
+    else -> "High"
+}
+
+/** Karolinska Sleepiness Scale anchors (Åkerstedt & Gillberg 1990); even steps are unlabelled. */
+fun kssLabel(v: Int): String = when (v) {
+    1 -> "Extremely alert"
+    3 -> "Alert"
+    5 -> "Neither alert nor sleepy"
+    7 -> "Sleepy, but no difficulty staying awake"
+    9 -> "Extremely sleepy, fighting sleep"
+    else -> ""
+}
+
 /** A short name for HUD readouts, where the full order sentence doesn't fit. */
 fun shortName(kind: OrderKind): String = when (kind) {
     OrderKind.WAKE -> "Up"
@@ -123,11 +153,13 @@ fun shortName(kind: OrderKind): String = when (kind) {
     OrderKind.PEAK -> "Sharpest window"
     OrderKind.DIP -> "Dip"
     OrderKind.CAFFEINE -> "Last caffeine"
+    OrderKind.NAP -> "Nap window"
     OrderKind.MELATONIN -> "Melatonin rising"
     OrderKind.WIND_DOWN -> "Wind down"
     OrderKind.SLEEPY -> "Sleepiness"
     OrderKind.LIGHTS_OUT -> "Lights out"
     OrderKind.TOMORROW -> "Up"
+    OrderKind.CHECK_IN -> "Morning report"
 }
 
 /** The mission brief: what's left of today in two or three plain sentences. */

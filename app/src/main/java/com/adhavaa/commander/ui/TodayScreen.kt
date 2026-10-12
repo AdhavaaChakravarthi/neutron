@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
@@ -55,7 +56,11 @@ import com.adhavaa.commander.orders.OrderKind
 import com.adhavaa.commander.orders.REMINDABLE
 import com.adhavaa.commander.orders.brief
 import com.adhavaa.commander.orders.buildOrders
+import com.adhavaa.commander.orders.TICKABLE
 import com.adhavaa.commander.orders.countdown
+import com.adhavaa.commander.orders.debtBand
+import com.adhavaa.commander.orders.doneCount
+import com.adhavaa.commander.orders.kssLabel
 import com.adhavaa.commander.orders.formatHours
 import com.adhavaa.commander.orders.nextOrder
 import com.adhavaa.commander.orders.phase
@@ -69,6 +74,8 @@ data class TodayActions(
     val onOpenSettings: () -> Unit = {},
     val onToggleReminder: (OrderKind, Boolean) -> Unit = { _, _ -> },
     val onSetAlarm: (LocalDateTime) -> Unit = {},
+    val onToggleDone: (OrderKind, Boolean) -> Unit = { _, _ -> },
+    val onRate: (Int) -> Unit = {},
 )
 
 @Composable
@@ -87,14 +94,14 @@ fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable
         contentPadding = PaddingValues(
             start = 14.dp, end = 14.dp,
             top = insets.calculateTopPadding() + 8.dp,
-            bottom = insets.calculateBottomPadding() + 28.dp,
+            bottom = bottomPadding(insets),
         ),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item { TopBar(state, fmt, actions.onOpenSettings) }
         item { banner() }
         item { TelemetryStrip(orders, next, now, fmt) }
-        item { MissionPanel(state, next, fmt) }
+        item { MissionPanel(state, list, next, fmt, actions.onRate) }
         item { BriefPanel(orders, now, fmt) }
         item {
             HudPanel(
@@ -128,7 +135,7 @@ fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable
         item { TimelinePanel(list, state, now, fmt, actions) }
         item {
             Text(
-                "Wellness tool, not a medical device. No data leaves this phone. Sleep debt appears once Commander can see your real nights.",
+                "Wellness tool, not a medical device. No data leaves this phone.",
                 style = HudType.small,
                 color = Hud.dim,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
@@ -178,7 +185,13 @@ private fun TelemetryStrip(orders: TodayOrders, next: Order?, now: LocalDateTime
 }
 
 @Composable
-private fun MissionPanel(state: UiState.Ready, next: Order?, fmt: (LocalDateTime) -> String) {
+private fun MissionPanel(
+    state: UiState.Ready,
+    list: List<Order>,
+    next: Order?,
+    fmt: (LocalDateTime) -> String,
+    onRate: (Int) -> Unit,
+) {
     val o = state.orders
     HudPanel(
         decoration = Modifier.contours(),
@@ -193,7 +206,51 @@ private fun MissionPanel(state: UiState.Ready, next: Order?, fmt: (LocalDateTime
             KeyValue("Next order", next?.let { "${shortName(it.kind)} · ${fmt(it.at)}" } ?: "None today", Hud.green)
             KeyValue("Lights out", fmt(o.lightsOut), Hud.amber)
             KeyValue("Sleep need", formatHours(o.needH))
-            KeyValue("Sleep debt", "No night data yet", Hud.dim)
+            val debt = state.stats.debtH
+            KeyValue(
+                "Sleep debt",
+                debt?.let { "${formatHours(it)} · ${debtBand(it)}" } ?: "No nights recorded yet",
+                when {
+                    debt == null -> Hud.dim
+                    debt >= 2.0 -> Hud.amber
+                    else -> Hud.green
+                },
+            )
+            val (done, total) = doneCount(list, state.done)
+            KeyValue("Orders done", "$done / $total")
+        }
+        AlertnessRow(onRate)
+    }
+}
+
+/** One tap: how alert do you feel right now? Feeds future calibration of your curve (MODEL.md section 5). */
+@Composable
+private fun AlertnessRow(onRate: (Int) -> Unit) {
+    var last by rememberSaveable { mutableStateOf(0) }
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            if (last == 0) "HOW ALERT ARE YOU? 1 = VERY ALERT · 9 = FIGHTING SLEEP" else "LOGGED $last · ${kssLabel(last).ifBlank { "between anchors" }.uppercase()}",
+            style = HudType.label,
+            color = if (last == 0) Hud.muted else Hud.green,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            for (v in 1..9) {
+                val chosen = v == last
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(30.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(if (chosen) Hud.green else Hud.panelHi)
+                        .clickable(onClickLabel = "Alertness $v ${kssLabel(v)}", role = Role.Button) {
+                            last = v
+                            onRate(v)
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(v.toString(), style = HudType.value, color = if (chosen) Hud.onMint else Hud.ink)
+                }
+            }
         }
     }
 }
@@ -211,7 +268,7 @@ private fun BriefPanel(orders: TodayOrders, now: LocalDateTime, fmt: (LocalDateT
         Wireframe(orders, Modifier.fillMaxWidth().height(72.dp))
         Text(brief(orders, now, fmt), style = HudType.body, color = Hud.onMint)
         Text(
-            "Planned from your usual schedule. The sharpest window is an estimate.",
+            "Planned from your recorded nights (your usual schedule fills gaps). The sharpest window is an estimate.",
             style = HudType.small,
             color = Hud.onMint.copy(alpha = 0.7f),
         )
@@ -271,7 +328,9 @@ private fun TimelinePanel(
                     fmt = fmt,
                     now = now,
                     reminderOn = order.kind in state.settings.reminders,
+                    done = order.kind in state.done,
                     onToggleReminder = actions.onToggleReminder,
+                    onToggleDone = actions.onToggleDone,
                     onSetAlarm = actions.onSetAlarm,
                 )
             }
@@ -285,7 +344,9 @@ private fun TimelineRow(
     fmt: (LocalDateTime) -> String,
     now: LocalDateTime,
     reminderOn: Boolean,
+    done: Boolean,
     onToggleReminder: (OrderKind, Boolean) -> Unit,
+    onToggleDone: (OrderKind, Boolean) -> Unit,
     onSetAlarm: (LocalDateTime) -> Unit,
 ) {
     var open by rememberSaveable(order.kind) { mutableStateOf(false) }
@@ -326,6 +387,7 @@ private fun TimelineRow(
                 HudChip(if (order.kind in REMINDABLE) "Order" else "Info")
                 if (order.estimate) HudChip("Est", Tone.AMBER)
                 if (current) HudChip("Now", Tone.SOLID)
+                if (done) HudChip("Done", Tone.GREEN)
             }
             Text(
                 order.title.trimEnd('.').uppercase(),
@@ -350,12 +412,23 @@ private fun TimelineRow(
                 )
             }
         }
+        Column(Modifier.padding(vertical = 4.dp)) {
+        if (order.kind in TICKABLE) {
+            SquareButton(
+                contentDescription = if (done) "Mark ${order.title} not done" else "Mark ${order.title} done",
+                onClick = { onToggleDone(order.kind, !done) },
+                active = done,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Icon(Icons.Outlined.Check, contentDescription = null, tint = if (done) Hud.green else Hud.dim, modifier = Modifier.size(17.dp))
+            }
+        }
         if (order.kind in REMINDABLE) {
             SquareButton(
                 contentDescription = if (reminderOn) "Turn off reminder for ${order.title}" else "Turn on reminder for ${order.title}",
                 onClick = { onToggleReminder(order.kind, !reminderOn) },
                 active = reminderOn,
-                modifier = Modifier.padding(8.dp),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             ) {
                 Icon(
                     Icons.Outlined.Notifications,
@@ -364,6 +437,7 @@ private fun TimelineRow(
                     modifier = Modifier.size(17.dp),
                 )
             }
+        }
         }
     }
 }

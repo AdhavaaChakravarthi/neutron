@@ -76,7 +76,11 @@ fun ordersFor(
         nights = nights,
         st = settings,
     )
-    val origin = date.minusDays(nights.toLong()).atStartOfDay()
+    return toOrders(plan, date.minusDays(nights.toLong()).atStartOfDay(), date, needH, debtH)
+}
+
+/** Converts a [DayPlan] in absolute hours (origin = local midnight) to wall-clock orders. */
+fun toOrders(plan: DayPlan, origin: LocalDateTime, date: LocalDate, needH: Double, debtH: Double): TodayOrders {
     fun at(h: Double): LocalDateTime = origin.plusSeconds((h * 3600.0).roundToLong())
     return TodayOrders(
         date = date,

@@ -314,3 +314,184 @@ def plan_for_schedule(bed_clock: float, wake_clock: float, need_h: float, debt_h
     tw = wake_clock if target_wake_clock is None else target_wake_clock
     target_next_wake = usual_next_wake + wrap12(tw - wake_clock)
     return plan_day(eps, wake, habitual_onset, usual_next_wake, target_next_wake, need_h, debt_h, prm, st)
+
+
+# ---------------------------------------------------------------------------
+# 6. Real nights (MODEL.md section 9)
+# ---------------------------------------------------------------------------
+
+def _median(xs: Sequence[float]) -> float:
+    s = sorted(xs)
+    n = len(s)
+    return s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2.0
+
+
+def _after_noon(clock_h: float) -> float:
+    """Clock hour re-expressed as hours after noon, so 23:00 and 01:00 sit next to each other."""
+    return (clock_h - 12.0) % 24.0
+
+
+def wake_day(e: Episode) -> int:
+    return int(math.floor(e.end / 24.0))
+
+
+HABIT_WINDOW = 7       # ASSUMPTION: habitual times come from the last 7 recorded nights
+HABIT_MIN_NIGHTS = 3   # ASSUMPTION: fewer than 3 recorded nights -> use the stated usual schedule
+
+
+def habitual_times(nights: Sequence[Episode], fallback_bed: float, fallback_wake: float) -> tuple[float, float]:
+    """Median sleep-onset and wake clock times of the last HABIT_WINDOW recorded nights."""
+    recent = sorted(nights, key=lambda e: e.end)[-HABIT_WINDOW:]
+    if len(recent) < HABIT_MIN_NIGHTS:
+        return fallback_bed, fallback_wake
+    onset = (_median([_after_noon(e.start % 24.0) for e in recent]) + 12.0) % 24.0
+    wake = _median([e.end % 24.0 for e in recent])
+    return onset, wake
+
+
+def nights_with_fill(nights: Sequence[Episode], today: int, bed_clock: float, wake_clock: float,
+                     days: int = 20) -> list[Episode]:
+    """One night per wake day for the last `days` days: the recorded night if there is one (the longest, if
+    several), otherwise the habitual schedule as a provisional night."""
+    by_day: dict[int, Episode] = {}
+    for e in nights:
+        d = wake_day(e)
+        if d not in by_day or (e.end - e.start) > (by_day[d].end - by_day[d].start):
+            by_day[d] = e
+    dur = (wake_clock - bed_clock) % 24.0
+    out = []
+    for d in range(today - days + 1, today + 1):
+        if d in by_day:
+            out.append(by_day[d])
+        else:
+            end = 24.0 * d + wake_clock
+            out.append(Episode(end - dur, end))
+    return out
+
+
+def step_anchors(nights: Sequence[Episode], today: int, bed_c: float, wake_c: float) -> tuple[float, float]:
+    """Where the 30-minute steps start from: the earlier of the habitual time and last night's time. Following
+    orders moves you on the next day; one late night can't pull the plan later. ASSUMPTION (D-44)."""
+    last = [e for e in nights if wake_day(e) == today]
+    if not last:
+        return bed_c, wake_c
+    e = max(last, key=lambda x: x.end - x.start)
+    bed = (min(_after_noon(bed_c), _after_noon(e.start % 24.0)) + 12.0) % 24.0
+    wake = min(wake_c, e.end % 24.0)
+    return bed, wake
+
+
+def plan_from_history(nights: Sequence[Episode], naps: Sequence[Episode], today: int,
+                      usual_bed: float, usual_wake: float, need_h: float, debt_h: float = 0.0,
+                      target_wake_clock: float | None = None, days: int = 20,
+                      prm: TpmParams = TpmParams(), st: PlanSettings = PlanSettings()) -> DayPlan:
+    """Today's orders from recorded nights. With no recorded nights this equals plan_for_schedule()."""
+    past = [e for e in nights if wake_day(e) <= today]
+    bed_c, wake_c = habitual_times(past, usual_bed, usual_wake)
+    filled = nights_with_fill(past, today, bed_c, wake_c, days)
+    keep_naps = [n for n in naps
+                 if filled[0].start <= n.start and not any(n.start < f.end and f.start < n.end for f in filled)]
+    eps = sorted(filled + keep_naps, key=lambda e: e.start)
+    wake = filled[-1].end
+    dur = (wake_c - bed_c) % 24.0
+    mid = (bed_c + dur / 2.0) % 24.0
+    prm = replace(prm, p=personal_acrophase(mid, prm))
+    bed_a, wake_a = step_anchors(past, today, bed_c, wake_c)
+    habitual_onset = 24.0 * today + bed_a if bed_a >= 12.0 else 24.0 * (today + 1) + bed_a
+    usual_next_wake = 24.0 * (today + 1) + wake_a if wake_a < bed_a or bed_a < 12.0 else 24.0 * (today + 1) + wake_a
+    tw = wake_a if target_wake_clock is None else target_wake_clock
+    target_next_wake = usual_next_wake + wrap12(tw - wake_a)
+    return plan_day(eps, wake, habitual_onset, usual_next_wake, target_next_wake, need_h, debt_h, prm, st)
+
+
+def daily_sleep(nights: Sequence[Episode], naps: Sequence[Episode], skipped_days: Sequence[int],
+                today: int, lookback: int = 30) -> list[float]:
+    """Total sleep per wake day, newest first, for days with a recorded night or a 'didn't sleep' mark.
+    Naps count toward the day they end on (D-16). Days without data are left out, not counted as zero."""
+    out = []
+    for d in range(today, today - lookback, -1):
+        has_night = any(wake_day(e) == d for e in nights)
+        if not has_night and d not in skipped_days:
+            continue
+        total = sum(e.end - e.start for e in nights if wake_day(e) == d)
+        total += sum(n.end - n.start for n in naps if wake_day(n) == d)
+        out.append(total)
+    return out
+
+
+def need_from_history(nights: Sequence[Episode], natural: Sequence[bool], naps: Sequence[Episode],
+                      skipped_days: Sequence[int], prior_h: float = DEFAULT_NEED_H) -> float:
+    """MODEL.md section 3: a night qualifies when you woke without an alarm and debt before it (against the
+    prior) was under DEBT_LOW_H. natural[i] belongs to nights[i]."""
+    qualifying = []
+    for e, nat in zip(nights, natural):
+        if not nat:
+            continue
+        d = wake_day(e)
+        before = daily_sleep(nights, naps, skipped_days, d - 1)
+        if sleep_debt(before, prior_h) < DEBT_LOW_H:
+            qualifying.append(e.end - e.start)
+    return estimate_need(qualifying, prior_h)
+
+
+def sleep_regularity_index(nights: Sequence[Episode], naps: Sequence[Episode], today: int,
+                           days: int = 7, step_h: float = 5 / 60) -> float | None:
+    """Phillips et al. 2017: probability of being in the same state (asleep/awake) 24 h apart, scaled so that
+    perfectly regular = 100 and random = 0 (SRI = 200 * P(same) - 100). Compared only across consecutive wake
+    days that both have a recorded night; noon-to-noon windows. None with fewer than 3 such pairs."""
+    recorded = {wake_day(e) for e in nights}
+    eps = list(nights) + list(naps)
+
+    def asleep(t: float) -> bool:
+        return any(e.start <= t < e.end for e in eps)
+
+    same = total = pairs = 0
+    for d in range(today - days + 1, today + 1):
+        if d not in recorded or (d - 1) not in recorded:
+            continue
+        pairs += 1
+        t = 24.0 * (d - 2) + 12.0
+        n = int(round(24.0 / step_h))
+        for i in range(n):
+            a = asleep(t + i * step_h)
+            b = asleep(t + i * step_h + 24.0)
+            same += a == b
+            total += 1
+    if pairs < 3:
+        return None
+    return 200.0 * same / total - 100.0
+
+
+def mid_sleep(e: Episode) -> float:
+    """Mid-sleep clock time, as hours after noon (so values compare across midnight)."""
+    return _after_noon(((e.start + e.end) / 2.0) % 24.0)
+
+
+def social_jetlag(nights: Sequence[Episode], free_wake_days: Sequence[int]) -> float | None:
+    """Wittmann et al. 2006: |mid-sleep on free days - mid-sleep on workdays|, hours. Free night = the night
+    before a free day (it ends on a free wake day). Needs >= 2 free and >= 3 work nights."""
+    free = [mid_sleep(e) for e in nights if wake_day(e) in free_wake_days]
+    work = [mid_sleep(e) for e in nights if wake_day(e) not in free_wake_days]
+    if len(free) < 2 or len(work) < 3:
+        return None
+    return abs(_median(free) - _median(work))
+
+
+def chronotype_msfsc(nights: Sequence[Episode], natural: Sequence[bool], free_wake_days: Sequence[int],
+                     free_days_per_week: int) -> float | None:
+    """MCTQ chronotype (Roenneberg et al. 2003/2012): mid-sleep on free days, corrected for catch-up sleep.
+    MSFsc = MSF if SDf <= SDw, else MSF - (SDf - SDweek)/2, SDweek = (SDw*WD + SDf*FD)/7.
+    Not available when most free nights ended with an alarm. Returns a clock hour."""
+    free = [(e, n) for e, n in zip(nights, natural) if wake_day(e) in free_wake_days]
+    work = [e for e in nights if wake_day(e) not in free_wake_days]
+    if len(free) < 2 or len(work) < 3:
+        return None
+    if sum(1 for _, n in free if not n) * 2 > len(free):
+        return None
+    msf = _median([mid_sleep(e) for e, _ in free])
+    sdf = sum(e.end - e.start for e, _ in free) / len(free)
+    sdw = sum(e.end - e.start for e in work) / len(work)
+    fd = free_days_per_week
+    sdweek = (sdw * (7 - fd) + sdf * fd) / 7.0
+    msfsc = msf if sdf <= sdw else msf - (sdf - sdweek) / 2.0
+    return (msfsc + 12.0) % 24.0

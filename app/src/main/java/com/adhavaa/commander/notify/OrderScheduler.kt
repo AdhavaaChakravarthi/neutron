@@ -5,12 +5,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.text.format.DateFormat
-import com.adhavaa.commander.data.Settings
-import com.adhavaa.commander.data.SettingsStore
+import com.adhavaa.commander.container
+import com.adhavaa.commander.orders.CommandData
 import com.adhavaa.commander.orders.MAX_SCHEDULED
 import com.adhavaa.commander.orders.Reminder
 import com.adhavaa.commander.orders.upcomingReminders
-import kotlinx.coroutines.flow.first
 import java.time.LocalDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -33,13 +32,13 @@ object OrderScheduler {
     }
 
     suspend fun reschedule(context: Context) {
-        reschedule(context, SettingsStore(context).settings.first())
+        reschedule(context, context.container().commandData())
     }
 
-    fun reschedule(context: Context, settings: Settings, now: LocalDateTime = LocalDateTime.now()): List<Reminder> {
+    fun reschedule(context: Context, data: CommandData, now: LocalDateTime = LocalDateTime.now()): List<Reminder> {
         val am = context.getSystemService(AlarmManager::class.java)
         cancelAll(context, am)
-        val upcoming = upcomingReminders(settings, now, timeFormatter(context))
+        val upcoming = upcomingReminders(data, now, timeFormatter(context))
         upcoming.forEachIndexed { slot, r ->
             val millis = r.at.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli()
             val intent = baseIntent(context)
