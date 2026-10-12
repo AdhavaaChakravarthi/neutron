@@ -23,12 +23,12 @@ import java.io.FileOutputStream
 import java.time.Duration
 
 /**
- * The real tabs with their ViewModels, database and packaged data, as the app opens them. A different SDK from the
- * renders gives these their own Robolectric sandbox, so nothing an earlier render left running can stall them.
+ * The real tabs with their ViewModels, database and packaged data, as the app opens them. Renders must not leave
+ * effects running (see LiftScreen's ticking flag): they share this sandbox, and a stuck UI dispatcher stalls these.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@Config(sdk = [35], qualifiers = "w393dp-h852dp-xhdpi")
+@Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi")
 class LiveTabTest {
     private val outDir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
 
