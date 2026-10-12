@@ -52,6 +52,16 @@ android {
         buildConfig = true
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all { test ->
+                // Render tests write PNGs here; CI attaches them to the release.
+                test.systemProperty("screenshot.dir", project.layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
+            }
+        }
+    }
+
     lint {
         abortOnError = true
         checkReleaseBuilds = true
@@ -80,4 +90,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
 }

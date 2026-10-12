@@ -94,7 +94,10 @@ fun SettingsScreen(
                     if (s.targetWake != null) {
                         TextButton(onClick = { onTargetWake(null) }) { Text("Clear target") }
                     }
-                    Hint("Set an earlier target and Commander moves you there 30 minutes a day.")
+                    Hint(
+                        "Set an earlier target and Commander moves you there 30 minutes a day. If you have to be " +
+                            "up at a fixed time (class, work), make that your usual wake time instead.",
+                    )
                 }
             }
             item { Section("Sleep need") }
