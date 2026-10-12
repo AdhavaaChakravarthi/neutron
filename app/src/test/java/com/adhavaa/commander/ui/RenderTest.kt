@@ -127,7 +127,8 @@ class RenderTest {
     }
 
     private fun render(name: String, fontScale: Float = 1f, content: @Composable () -> Unit) {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val activity = controller.get()
         activity.setContent {
             val density = LocalDensity.current
             CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
@@ -142,7 +143,17 @@ class RenderTest {
 
         val colours = HashSet<Int>()
         for (y in 0 until bitmap.height step 7) for (x in 0 until bitmap.width step 7) colours += bitmap.getPixel(x, y)
+        finish(controller)
         assertTrue("$name rendered blank (${colours.size} colours)", colours.size > 20)
+    }
+
+    /**
+     * Tears the activity down and drains the main looper, so a running effect (the lift clock, a timer) is cancelled
+     * cleanly. A dispatch left pending at teardown wedges Compose's UI dispatcher for every later test in the class.
+     */
+    private fun finish(controller: org.robolectric.android.controller.ActivityController<ComponentActivity>) {
+        controller.pause().stop().destroy()
+        shadowOf(Looper.getMainLooper()).idle()
     }
 
     @Test
@@ -384,7 +395,8 @@ class RenderTest {
     @Test
     @Config(qualifiers = "w393dp-h1700dp-xhdpi")
     fun fuelTabLive() {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val activity = controller.get()
         activity.setContent { CommanderTheme { FuelRoute(onOpenSettings = {}, onFullScreen = {}) } }
         val vm = ViewModelProvider(activity)[FuelViewModel::class.java]
         waitLive(activity, "Fuel state") { vm.state.value != null }
@@ -397,6 +409,7 @@ class RenderTest {
         FileOutputStream(File(outDir, "18-fuel-live.png")).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         val colours = HashSet<Int>()
         for (y in 0 until bitmap.height step 7) for (x in 0 until bitmap.width step 7) colours += bitmap.getPixel(x, y)
+        finish(controller)
         assertTrue("live Fuel tab rendered blank (${colours.size} colours)", colours.size > 20)
     }
 
@@ -480,7 +493,7 @@ class RenderTest {
         val ui = trainUi(thursday, openLift = true)
         val w = ui.workouts.last { it.kind == WorkoutKind.LIFT }
         val start = 1_760_000_000_000L
-        LiftScreen(ui, PROGRAM[2], w.id, start, Rest(start + 27 * 60_000L + 95_000L, 150, "Barbell Deadlift set 2"), LiftActions(), now = { start + 27 * 60_000L })
+        LiftScreen(ui, PROGRAM[2], w.id, start, Rest(start + 27 * 60_000L + 95_000L, 150, "Barbell Deadlift set 2"), LiftActions(), now = { start + 27 * 60_000L }, ticking = false)
     }
 
     @Test
@@ -506,7 +519,8 @@ class RenderTest {
     @Test
     @Config(qualifiers = "w393dp-h1700dp-xhdpi")
     fun trainTabLive() {
-        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        val controller = Robolectric.buildActivity(ComponentActivity::class.java).setup()
+        val activity = controller.get()
         activity.setContent { CommanderTheme { TrainRoute(onOpenSettings = {}, onFullScreen = {}) } }
         val vm = ViewModelProvider(activity)[TrainViewModel::class.java]
         waitLive(activity, "Train state") { vm.state.value != null }
@@ -519,6 +533,7 @@ class RenderTest {
         FileOutputStream(File(outDir, "25-train-live.png")).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         val colours = HashSet<Int>()
         for (y in 0 until bitmap.height step 7) for (x in 0 until bitmap.width step 7) colours += bitmap.getPixel(x, y)
+        finish(controller)
         assertTrue("live Train tab rendered blank (${colours.size} colours)", colours.size > 20)
     }
 }

@@ -67,16 +67,27 @@ data class LiftActions(
  * set. Logging a set starts the rest timer (ACSM 2009 rest periods).
  */
 @Composable
-fun LiftScreen(ui: TrainUi, day: LiftDay, workoutId: Long, startMs: Long, rest: Rest?, actions: LiftActions, now: () -> Long = System::currentTimeMillis) {
+fun LiftScreen(
+    ui: TrainUi,
+    day: LiftDay,
+    workoutId: Long,
+    startMs: Long,
+    rest: Rest?,
+    actions: LiftActions,
+    now: () -> Long = System::currentTimeMillis,
+    ticking: Boolean = true,
+) {
     BackHandler(onBack = actions.onBack)
     val insets = WindowInsets.safeDrawing.asPaddingValues()
     val targets = ui.targets[day.key].orEmpty()
     val logged = ui.sets.filter { it.workoutId == workoutId }
     var clock by remember { mutableLongStateOf(now()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            delay(1000)
-            clock = now()
+    if (ticking) {
+        LaunchedEffect(Unit) {
+            while (true) {
+                delay(1000)
+                clock = now()
+            }
         }
     }
     LazyColumn(
