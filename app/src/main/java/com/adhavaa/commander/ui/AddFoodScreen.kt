@@ -64,6 +64,8 @@ fun AddFoodScreen(
     onEditFood: ((Food) -> Unit)? = null,
     initialQuery: String = "",
     initialResults: List<Food>? = null,
+    /** Read after each search: a problem with the food list to show, if any. */
+    notice: () -> String? = { null },
 ) {
     BackHandler(onBack = onBack)
     val insets = WindowInsets.safeDrawing.asPaddingValues()
@@ -73,11 +75,13 @@ fun AddFoodScreen(
     var loading by remember { mutableStateOf(initialResults == null) }
     var picked by remember { mutableStateOf<Food?>(null) }
     var lastLogged by remember { mutableStateOf<String?>(null) }
+    var problem by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(query, filter) {
         if (initialResults != null && query == initialQuery && filter == initialFilter) return@LaunchedEffect
         delay(150)
         results = search(query, filter)
+        problem = notice()
         loading = false
     }
     val mine = if (query.isBlank()) myFoods.filter { filter.allows(it) } else emptyList()
@@ -136,6 +140,7 @@ fun AddFoodScreen(
                 )
             }
         }
+        problem?.let { item { Text(it, style = HudType.small, color = Hud.amber) } }
         lastLogged?.let { item { HudChip("Logged · $it", Tone.GREEN) } }
         if (onNewFood != null || onNewRecipe != null) {
             item {

@@ -61,6 +61,7 @@ fun FuelRoute(onOpenSettings: () -> Unit, onFullScreen: (Boolean) -> Unit, vm: F
             dayType = com.adhavaa.commander.fuel.DayType.NORMAL,
             myFoods = u.myFoods.filter { !it.recipe },
             search = vm::search,
+            notice = vm::catalogError,
             onChosen = { f, g, _, _ ->
                 picking(Ingredient(f, g))
                 pickIngredient = null
@@ -79,6 +80,7 @@ fun FuelRoute(onOpenSettings: () -> Unit, onFullScreen: (Boolean) -> Unit, vm: F
             dayType = u.picture.dayType,
             myFoods = u.myFoods,
             search = vm::search,
+            notice = vm::catalogError,
             onChosen = { f, g, amount, m -> vm.log(date, m, f, g, amount) },
             onBack = { page = null },
             onNewFood = { page = FuelPage.EditFood(null) },

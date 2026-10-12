@@ -17,7 +17,7 @@ import com.adhavaa.commander.fuel.Nutrients
 import com.adhavaa.commander.fuel.CUSTOM_GROUP
 import com.adhavaa.commander.fuel.formatServings
 import com.adhavaa.commander.fuel.index
-import com.adhavaa.commander.fuel.parseCatalog
+import com.adhavaa.commander.fuel.readCatalog
 import com.adhavaa.commander.fuel.parseServings
 import com.adhavaa.commander.fuel.recipeFood
 import com.adhavaa.commander.model.WeighIn
@@ -28,7 +28,8 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
-import java.util.zip.GZIPInputStream
+import java.io.FileNotFoundException
+import kotlin.coroutines.cancellation.CancellationException
 
 /** A recipe as stored: its ingredients by reference, so it can be opened and edited again. */
 data class RecipeDraft(
@@ -174,20 +175,48 @@ class FuelRepository(private val db: CommanderDb, private val catalog: FoodCatal
         )
 }
 
-/** The USDA foods bundled in assets/foods.tsv.gz, loaded once on first use (about 7,400 rows). */
+/** Asset names the food list may have in the APK (the build unpacks .gz assets), plain first. */
+val CATALOG_ASSETS = listOf("foods.tsv", "foods.tsv.gz")
+
+/**
+ * The USDA foods bundled with the app (about 7,400 rows), loaded once on first use. A failed load never crashes:
+ * search falls back to your own foods and [error] says why.
+ */
 class FoodCatalog(private val load: () -> List<Food>) {
     private val lock = Mutex()
     @Volatile private var cache: List<Indexed>? = null
 
+    @Volatile
+    var error: String? = null
+        private set
+
     suspend fun foods(): List<Indexed> = cache ?: lock.withLock {
-        cache ?: withContext(Dispatchers.IO) { index(load()) }.also { cache = it }
+        cache ?: try {
+            withContext(Dispatchers.IO) { index(load()) }.also {
+                cache = it
+                error = null
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = "The food list couldn't load (${e.javaClass.simpleName}). Your own foods and quick add still work."
+            emptyList()
+        }
     }
 
     companion object {
-        fun fromAssets(context: Context): FoodCatalog = FoodCatalog {
-            context.assets.open("foods.tsv.gz").use { raw ->
-                GZIPInputStream(raw).bufferedReader().useLines { parseCatalog(it) }
+        fun fromAssets(context: Context): FoodCatalog = FoodCatalog { loadAsset(context) }
+
+        private fun loadAsset(context: Context): List<Food> {
+            for (name in CATALOG_ASSETS) {
+                val stream = try {
+                    context.assets.open(name)
+                } catch (e: FileNotFoundException) {
+                    null
+                } ?: continue
+                return stream.use { readCatalog(it) }
             }
+            throw FileNotFoundException(CATALOG_ASSETS.joinToString(" or "))
         }
     }
 }

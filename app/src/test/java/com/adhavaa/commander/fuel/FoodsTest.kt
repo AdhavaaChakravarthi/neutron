@@ -107,6 +107,15 @@ class FoodsTest {
         assertEquals("120 g", amountLabel(120.0, Serving("g", 1.0)))
     }
 
+    @Test
+    fun readsTheListGzippedOrPlain() {
+        val text = (listOf(header) + rows).joinToString("\n") + "\n"
+        val plain = readCatalog(text.byteInputStream())
+        val zipped = java.io.ByteArrayOutputStream().also { out -> java.util.zip.GZIPOutputStream(out).use { it.write(text.toByteArray()) } }
+        assertEquals(foods, plain)
+        assertEquals(foods, readCatalog(zipped.toByteArray().inputStream()))
+    }
+
     /** The real bundled database: right size, right numbers, and search finds everyday foods. */
     @Test
     fun bundledUsdaDatabase() {

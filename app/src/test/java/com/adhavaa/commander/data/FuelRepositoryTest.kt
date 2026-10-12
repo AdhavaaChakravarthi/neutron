@@ -155,3 +155,25 @@ class MigrationTest {
         }
     }
 }
+
+/** The food list as the app really loads it, from the packaged assets (which the build may have unzipped). */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [34])
+class FoodCatalogTest {
+    @Test
+    fun loadsFromPackagedAssets() = runBlocking {
+        val catalog = FoodCatalog.fromAssets(RuntimeEnvironment.getApplication())
+        val foods = catalog.foods()
+        assertNull(catalog.error)
+        assertTrue("${foods.size} foods", foods.size > 7000)
+        assertTrue(foods.any { it.food.name == "Bananas, raw" })
+    }
+
+    @Test
+    fun aBrokenListDoesNotCrash() = runBlocking {
+        val catalog = FoodCatalog { throw java.io.IOException("disk") }
+        assertTrue(catalog.foods().isEmpty())
+        assertNotNull(catalog.error)
+    }
+}
+

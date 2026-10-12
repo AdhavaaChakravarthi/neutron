@@ -14,7 +14,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
 import com.adhavaa.commander.FuelUi
+import com.adhavaa.commander.FuelViewModel
 import com.adhavaa.commander.MorningReport
 import com.adhavaa.commander.UiState
 import com.adhavaa.commander.data.FuelSettings
@@ -316,4 +318,34 @@ class RenderTest {
         val base = ready(day.atTime(7, 20), history())
         TodayScreen(base.copy(fuel = pic, eaten = totals(entries(day).take(3))), TodayActions())
     }
+
+    /**
+     * The real Fuel tab with its real ViewModel, database and packaged food list, as the app opens it. Catches
+     * on-device problems the stateless renders can't, like the food list asset going missing.
+     */
+    @Test
+    @Config(qualifiers = "w393dp-h1700dp-xhdpi")
+    fun fuelTabLive() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        activity.setContent { CommanderTheme { FuelRoute(onOpenSettings = {}, onFullScreen = {}) } }
+        val vm = ViewModelProvider(activity)[FuelViewModel::class.java]
+        var waited = 0
+        while (vm.state.value == null && waited < 100) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+            Thread.sleep(30)
+            waited++
+        }
+        assertTrue("Fuel state never loaded", vm.state.value != null)
+        val found = kotlinx.coroutines.runBlocking { vm.search("banana", SearchFilter(fishOnly = true)) }
+        assertTrue("search found nothing: ${vm.catalogError()}", found.any { it.name == "Bananas, raw" })
+        repeat(5) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
+        val view = activity.window.decorView
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
+        FileOutputStream(File(outDir, "18-fuel-live.png")).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val colours = HashSet<Int>()
+        for (y in 0 until bitmap.height step 7) for (x in 0 until bitmap.width step 7) colours += bitmap.getPixel(x, y)
+        assertTrue("live Fuel tab rendered blank (${colours.size} colours)", colours.size > 20)
+    }
 }
+

@@ -1,5 +1,8 @@
 package com.adhavaa.commander.fuel
 
+import java.io.BufferedInputStream
+import java.io.InputStream
+import java.util.zip.GZIPInputStream
 import kotlin.math.roundToInt
 
 /*
@@ -110,6 +113,19 @@ fun parseCatalog(lines: Sequence<String>): List<Food> = lines.drop(1).mapNotNull
         diet = dietOf(c[1], c[2]),
     )
 }.toList()
+
+/**
+ * Reads foods.tsv whether or not it is gzipped, judged by the gzip magic bytes rather than the file name: the
+ * Android build unpacks a ".gz" asset, so the APK holds plain foods.tsv while tests read the .gz source.
+ */
+fun readCatalog(input: InputStream): List<Food> {
+    val buf = BufferedInputStream(input)
+    buf.mark(2)
+    val gz = buf.read() == 0x1f && buf.read() == 0x8b
+    buf.reset()
+    val stream: InputStream = if (gz) GZIPInputStream(buf) else buf
+    return stream.bufferedReader().useLines { parseCatalog(it) }
+}
 
 /** Which foods search shows. Vegan hides meat, fish, dairy and egg; fruit-only shows fruit and your own foods. */
 data class SearchFilter(val fishOnly: Boolean = false, val vegan: Boolean = false, val fruitOnly: Boolean = false) {

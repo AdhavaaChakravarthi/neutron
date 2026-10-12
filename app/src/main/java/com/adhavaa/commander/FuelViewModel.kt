@@ -99,6 +99,9 @@ class FuelViewModel(app: Application) : AndroidViewModel(app) {
         searchFoods(query, mine + c.catalog.foods(), filter, recentRefs)
     }
 
+    /** Why the USDA list isn't available, if it isn't. */
+    fun catalogError(): String? = c.catalog.error
+
     /** Warms the food list so the first search is quick. */
     fun preload() {
         viewModelScope.launch { c.catalog.foods() }
