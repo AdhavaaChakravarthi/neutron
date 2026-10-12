@@ -59,6 +59,7 @@ import com.adhavaa.commander.orders.countdown
 import com.adhavaa.commander.orders.formatHours
 import com.adhavaa.commander.orders.nextOrder
 import com.adhavaa.commander.orders.phase
+import com.adhavaa.commander.orders.shortName
 import com.adhavaa.commander.orders.statusLine
 import java.time.Duration
 import java.time.LocalDateTime
@@ -167,7 +168,7 @@ private fun TelemetryStrip(orders: TodayOrders, next: Order?, now: LocalDateTime
         modifier = Modifier.horizontalScroll(rememberScrollState()),
     ) {
         if (next != null) {
-            StatCell("Next order", "${next.title.trimEnd('.')} ${fmt(next.at)}", accent = Hud.green)
+            StatCell("Next order", "${shortName(next.kind)} ${fmt(next.at)}", accent = Hud.green)
             StatCell("ETA", countdown(now, next.at), accent = Hud.green)
         }
         StatCell("Lights out", fmt(orders.lightsOut), accent = Hud.amber)
@@ -189,7 +190,7 @@ private fun MissionPanel(state: UiState.Ready, next: Order?, fmt: (LocalDateTime
         }
         Text(statusLine(o, state.now, fmt), style = HudType.headline, color = Hud.ink)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            KeyValue("Next order", next?.let { "${it.title.trimEnd('.')} · ${fmt(it.at)}" } ?: "None today", Hud.green)
+            KeyValue("Next order", next?.let { "${shortName(it.kind)} · ${fmt(it.at)}" } ?: "None today", Hud.green)
             KeyValue("Lights out", fmt(o.lightsOut), Hud.amber)
             KeyValue("Sleep need", formatHours(o.needH))
             KeyValue("Sleep debt", "No night data yet", Hud.dim)

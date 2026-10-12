@@ -116,6 +116,20 @@ fun statusLine(o: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) -> Strin
     else -> "Lights out. Up at ${fmt(o.nextWake)}."
 }
 
+/** A short name for HUD readouts, where the full order sentence doesn't fit. */
+fun shortName(kind: OrderKind): String = when (kind) {
+    OrderKind.WAKE -> "Up"
+    OrderKind.GROGGY -> "Groggy"
+    OrderKind.PEAK -> "Sharpest window"
+    OrderKind.DIP -> "Dip"
+    OrderKind.CAFFEINE -> "Last caffeine"
+    OrderKind.MELATONIN -> "Melatonin rising"
+    OrderKind.WIND_DOWN -> "Wind down"
+    OrderKind.SLEEPY -> "Sleepiness"
+    OrderKind.LIGHTS_OUT -> "Lights out"
+    OrderKind.TOMORROW -> "Up"
+}
+
 /** The mission brief: what's left of today in two or three plain sentences. */
 fun brief(o: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) -> String): String {
     if (now.isBefore(o.wake)) return "Sleep. You're up at ${fmt(o.wake)}."
