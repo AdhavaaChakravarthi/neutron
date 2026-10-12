@@ -1,4 +1,4 @@
-"""Neutron reference model (Python).
+"""Commander reference model (Python).
 
 This is the executable version of MODEL.md. It exists so the Kotlin port in
 Phase 2 can be checked against golden vectors produced here. Keep the two in
@@ -11,7 +11,7 @@ ASSUMPTION there are flagged the same way here.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable, Sequence
 
 # ---------------------------------------------------------------------------
@@ -192,3 +192,125 @@ def detect_rest_period(screen_on_counts: Sequence[int], bin_h: float,
             if score > best:
                 best, best_ij = score, (i, j)
     return best_ij
+
+
+# ---------------------------------------------------------------------------
+# 5. Daily orders (MODEL.md section 7)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class PlanSettings:
+    latency_h: float = 0.25          # ASSUMPTION: allowance to fall asleep
+    caffeine_h: float = 8.0          # ASSUMPTION: Drake et al. 2013 shows 6 h is still too late
+    wind_down_h: float = 1.0         # ASSUMPTION
+    light_window_h: float = 1.0      # ASSUMPTION
+    peak_band: float = 0.5           # ASSUMPTION: peak = within 0.5 units of the day's max
+    groggy_w: float = -1.0           # ASSUMPTION: grogginess over once W > -1
+    max_shift_h: float = 0.5         # ASSUMPTION: move bedtime / wake at most 30 min per day
+    melatonin_lead_h: float = 2.0    # Sletten et al. 2010: sleep onset ~2 h after melatonin onset
+    sleepy_threshold: float = 7.0    # Akerstedt, Folkard & Portin 2004
+
+
+def debt_extension_h(debt_h: float) -> float:
+    """Extra time in bed when debt is high. ASSUMPTION; bands match MODEL.md section 4."""
+    if debt_h > 5.0:
+        return 0.5
+    if debt_h >= 2.0:
+        return 0.25
+    return 0.0
+
+
+def wrap12(h: float) -> float:
+    """Signed clock difference in (-12, 12]."""
+    return ((h + 12.0) % 24.0) - 12.0
+
+
+def schedule_episodes(bed_clock: float, wake_clock: float, nights: int) -> list[Episode]:
+    """Night k starts at bed_clock on day k (day k+1 if bedtime is after midnight) and lasts
+    (wake - bed) mod 24 hours. The last night ends on the morning of day `nights`."""
+    dur = (wake_clock - bed_clock) % 24.0
+    eps = []
+    for k in range(nights):
+        start = 24.0 * k + bed_clock if bed_clock >= 12.0 else 24.0 * (k + 1) + bed_clock
+        eps.append(Episode(start, start + dur))
+    return eps
+
+
+@dataclass(frozen=True)
+class DayPlan:
+    p: float
+    wake: float
+    light_until: float
+    groggy_until: float
+    peak_start: float
+    peak_at: float
+    peak_end: float
+    dip_at: float | None
+    sleepy_from: float | None
+    caffeine_cutoff: float
+    melatonin_rise: float
+    wind_down: float
+    ideal_lights_out: float
+    lights_out: float
+    bed_step_limited: bool
+    target_wake: float
+    next_wake: float
+    wake_step_limited: bool
+
+
+def plan_day(episodes: Sequence[Episode], wake: float, habitual_onset: float, usual_next_wake: float,
+             target_next_wake: float, need_h: float, debt_h: float,
+             prm: TpmParams, st: PlanSettings = PlanSettings()) -> DayPlan:
+    """All times are absolute hours. `episodes` must end with the night that ended at `wake`."""
+    # Wake order: move toward the target, but never more than max_shift earlier than usual.
+    next_wake = usual_next_wake + max(target_next_wake - usual_next_wake, -st.max_shift_h)
+    wake_step_limited = next_wake > target_next_wake + 1e-9
+    # Lights out: full need before next wake, never more than max_shift earlier than habitual.
+    ideal = next_wake - need_h - st.latency_h - debt_extension_h(debt_h)
+    lights_out = max(ideal, habitual_onset - st.max_shift_h)
+    bed_step_limited = lights_out > ideal + 1e-9
+
+    groggy_until = wake + math.log(prm.wc / st.groggy_w) / (-prm.wd)
+    curve = simulate(episodes, lights_out, prm)
+    window = [pt for pt in curve
+              if groggy_until <= pt.t <= lights_out and pt.alertness is not None]
+    peak_i = max(range(len(window)), key=lambda i: window[i].alertness)
+    floor = window[peak_i].alertness - st.peak_band
+    lo = peak_i
+    while lo > 0 and window[lo - 1].alertness >= floor:
+        lo -= 1
+    hi = peak_i
+    while hi < len(window) - 1 and window[hi + 1].alertness >= floor:
+        hi += 1
+    dips = [window[i] for i in range(1, len(window) - 1)
+            if window[i].alertness < window[i - 1].alertness
+            and window[i].alertness < window[i + 1].alertness]
+    dip = min(dips, key=lambda pt: pt.alertness) if dips else None
+    sleepy = next((pt.t for pt in window[peak_i:] if pt.alertness < st.sleepy_threshold), None)
+
+    return DayPlan(
+        p=prm.p, wake=wake, light_until=wake + st.light_window_h, groggy_until=groggy_until,
+        peak_start=window[lo].t, peak_at=window[peak_i].t, peak_end=window[hi].t,
+        dip_at=dip.t if dip else None, sleepy_from=sleepy,
+        caffeine_cutoff=lights_out - st.caffeine_h,
+        melatonin_rise=habitual_onset - st.melatonin_lead_h,
+        wind_down=lights_out - st.wind_down_h,
+        ideal_lights_out=ideal, lights_out=lights_out, bed_step_limited=bed_step_limited,
+        target_wake=target_next_wake, next_wake=next_wake, wake_step_limited=wake_step_limited)
+
+
+def plan_for_schedule(bed_clock: float, wake_clock: float, need_h: float, debt_h: float = 0.0,
+                      target_wake_clock: float | None = None, nights: int = 20,
+                      prm: TpmParams = TpmParams(), st: PlanSettings = PlanSettings()) -> DayPlan:
+    """Today's orders when the only data is the user's usual schedule (pre-detection).
+    Today is day `nights`; the circadian phase is the personal first guess from mid-sleep."""
+    dur = (wake_clock - bed_clock) % 24.0
+    mid = (bed_clock + dur / 2.0) % 24.0
+    prm = replace(prm, p=personal_acrophase(mid, prm))
+    eps = schedule_episodes(bed_clock, wake_clock, nights)
+    wake = eps[-1].end
+    habitual_onset = 24.0 * nights + bed_clock if bed_clock >= 12.0 else 24.0 * (nights + 1) + bed_clock
+    usual_next_wake = habitual_onset + dur
+    tw = wake_clock if target_wake_clock is None else target_wake_clock
+    target_next_wake = usual_next_wake + wrap12(tw - wake_clock)
+    return plan_day(eps, wake, habitual_onset, usual_next_wake, target_next_wake, need_h, debt_h, prm, st)

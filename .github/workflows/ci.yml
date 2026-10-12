@@ -4,6 +4,13 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   model-reference:
     runs-on: ubuntu-latest
@@ -12,6 +19,58 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Model reference checks
+      - name: Behavioural checks
         working-directory: tools/model-reference
         run: python3 check_model.py
+      - name: Golden vectors are up to date
+        working-directory: tools/model-reference
+        run: python3 make_golden.py --check
+
+  android:
+    needs: model-reference
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Test, lint and build
+        run: ./gradlew --stacktrace :model:test :app:testReleaseUnitTest :app:lintRelease :app:assembleRelease
+
+      - name: APK must not ask for network access
+        run: |
+          AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
+          "$AAPT2" dump permissions app/build/outputs/apk/release/app-release.apk | tee permissions.txt
+          if grep -q "android.permission.INTERNET" permissions.txt; then
+            echo "::error::INTERNET permission found in the APK"
+            exit 1
+          fi
+
+      - name: Name the APK
+        run: cp app/build/outputs/apk/release/app-release.apk "commander-${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: commander-apk
+          path: commander-*.apk
+
+      - name: Keep reports when something fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: "**/build/reports/**"
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "v0.2.${{ github.run_number }}" "commander-${{ github.run_number }}.apk" \
+            --target "${{ github.sha }}" \
+            --title "Commander 0.2.${{ github.run_number }}" \
+            --notes "Built from ${{ github.sha }}. On your phone: download the APK, open it, allow the install."

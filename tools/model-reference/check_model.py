@@ -10,7 +10,7 @@ import random
 import sys
 from pathlib import Path
 
-from neutron_model import (Episode, TpmParams, detect_rest_period, estimate_need,
+from commander_model import (Episode, TpmParams, detect_rest_period, estimate_need,
                            kss_from_alertness, personal_acrophase, simulate, sleep_debt)
 
 PRM = TpmParams()
@@ -181,7 +181,7 @@ if "--plot" in sys.argv:
     ax.tick_params(axis="y", labelsize=8, colors=muted)
     ax.set_xlim(6, 31.5)
     ax.set_ylabel("Predicted alertness (model units)", fontsize=9, color=ink2)
-    ax.set_title("Neutron energy curve: three-process model, default parameters",
+    ax.set_title("Commander energy curve: three-process model, default parameters",
                  fontsize=11, color=ink, loc="left")
     ax.grid(axis="y", color=grid, lw=0.6)
     for s in ("top", "right"):
