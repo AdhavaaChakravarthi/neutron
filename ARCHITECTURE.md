@@ -11,15 +11,15 @@
 
 ```
 neutron/
-├── model/        pure Kotlin/JVM, no Android dependencies: sleep (curve, need, debt, detector, plan) and fuel
+├── model/        pure Kotlin/JVM, no Android dependencies: sleep (curve, need, debt, detector, plan), fuel and train
 ├── app/          Compose UI, ViewModels, storage (data/), food search (fuel/), order text, background work, notifications
 └── tools/model-reference/   Python reference model + checks (golden-vector source)
 ```
 
 | Module | Owns | Depends on |
 |---|---|---|
-| `:model` | Three-process curve, sleep need, sleep debt, rest-period detector, daily plan, real-night history; Fuel: resting energy, trend weight, adaptive expenditure, check-ins and targets | nothing (Kotlin stdlib, `java.time`) |
-| `:app` | Screens (`ui/`, HUD components in `Hud.kt`), ViewModels, storage (`data/`: Room, DataStore, repositories), food parsing, search and recipes (`fuel/`, pure Kotlin), order and reminder wording (`orders/`, pure Kotlin), notifications and exact alarms (`notify/`), screen-use reading. One `AppContainer` instead of Hilt (D-46) | `:model` |
+| `:model` | Three-process curve, sleep need, sleep debt, rest-period detector, daily plan, real-night history; Fuel: resting energy, trend weight, adaptive expenditure, check-ins and targets; Train: estimated 1RM, double progression, endurance plan, session load | nothing (Kotlin stdlib, `java.time`) |
+| `:app` | Screens (`ui/`, HUD components in `Hud.kt`), ViewModels, storage (`data/`: Room, DataStore, repositories), food parsing, search and recipes (`fuel/`, pure Kotlin), the program, exercise list and training picture (`train/`, pure Kotlin), order and reminder wording (`orders/`, pure Kotlin), notifications and exact alarms (`notify/`), screen-use reading. One `AppContainer` instead of Hilt (D-46) | `:model` |
 
 `:model` being pure JVM is the point: every number the user sees is computed there and tested without an emulator.
 
@@ -38,7 +38,7 @@ fun calibrate(ratings: List<KssRating>, episodes: List<SleepEpisode>, prior: Tpm
 
 ## Data model (Room)
 
-Built so far (schema version 2). Times are epoch milliseconds read in the phone's current zone (D-33); days are epoch days.
+Built so far (schema version 3). Times are epoch milliseconds read in the phone's current zone (D-33); days are epoch days.
 
 | Table | Columns | Since |
 |---|---|---|
@@ -50,14 +50,17 @@ Built so far (schema version 2). Times are epoch milliseconds read in the phone'
 | `food_log` | id, epochDay, meal, ref (usda:id / food:id / quick), name, grams (null for quick add), amount, kcal, protein, fat, carb, fiber (a snapshot), atMs | v2 |
 | `weight` | epochDay, kg, atMs (one per day) | v2 |
 | `fuel_day` | epochDay, incomplete ("not fully logged") | v2 |
+| `workout` | id, epochDay, kind (LIFT / SWIM / BIKE / RUN / MOBILITY / OTHER), label, startMs, endMs (null while a lift is open), minutes, distanceKm, rpe (session RPE 0–10), notes, brick | v3 |
+| `set_log` | id, workoutId, epochDay, exercise (free-exercise-db id), setIndex, weightKg, reps (seconds for timed holds), rir, atMs | v3 |
+| `train_day` | epochDay, standDown (PAIN / ILLNESS / EXHAUSTED) | v3 |
 
-The USDA foods are not in Room: they ship as `assets/foods.tsv.gz` (220 KB, built by `tools/food-db/build_food_db.py`) and are loaded into memory on first search.
+The exercises aren't in Room either: `assets/exercises.tsv` (876 exercises, built by `tools/exercise-db/build_exercise_db.py`). The USDA foods are not in Room: they ship as `assets/foods.tsv.gz` (220 KB, built by `tools/food-db/build_food_db.py`) and are loaded into memory on first search.
 
 Planned for later phases: the screen-count signal per night (so detection can be re-run), calibration fits and a time-zone history.
 
 DataStore holds settings: schedule, target wake, need override, reminders, free days, campaign start, and the Fuel profile and practices.
 
-Each version bump ships a written migration with a test that opens the previous version's database (`MigrationTest`); the database is never destructively rebuilt. CI attaches Room's exported schema JSON to each release.
+Each version bump ships a written migration with a test that opens the previous version's database (`MigrationTest`, `Migration2To3Test`); the database is never destructively rebuilt. CI attaches Room's exported schema JSON to each release.
 
 ## Background work
 
@@ -98,5 +101,5 @@ Each phase ends with tests run, a pass/fail report, known gaps listed, and a sto
 | 5. Reminders + HUD ✓ (pulled forward, D-42) | Exact-alarm reminders, receivers, permission flow, per-order toggles, test order, set-alarm; HUD redesign |
 | 6. Calibration + hardening | KSS fit, export/import, crash log, accessibility pass, DST/travel tests |
 | 7. Two-week trial | You use it; we compare detected vs. confirmed nights and curve vs. your ratings, then fix what's off |
-| 8. Train (next) | Strength logging and progression, triathlon load and race phases, mobility routines. Starts with a sourced spec |
+| 8. Train ✓ (pulled forward, D-63) | 4-day upper/lower program with double progression, set logger and rest timer, swim/bike/run log and load, 70.3 plan with recovery weeks and taper, mobility routines, stand-down (MODEL.md §11) |
 | 9. Gut log | Stool type, symptoms, patterns against food |

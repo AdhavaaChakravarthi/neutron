@@ -10,10 +10,10 @@ import random
 import sys
 from pathlib import Path
 
-from commander_model import (KCAL_PER_KG, Episode, FuelProfile, TpmParams, chronotype_msfsc, daily_sleep,
-                             detect_rest_period, estimate_need, fuel_check_ins, need_from_history, personal_acrophase,
-                             plan_for_schedule, plan_from_history, schedule_episodes, simulate, sleep_debt,
-                             sleep_regularity_index, social_jetlag, trend_series)
+from commander_model import (KCAL_PER_KG, Episode, FuelProfile, Prescription, TpmParams, chronotype_msfsc, daily_sleep,
+                             detect_rest_period, e1rm, estimate_need, fuel_check_ins, need_from_history, next_load,
+                             personal_acrophase, plan_for_schedule, plan_from_history, schedule_episodes, simulate,
+                             sleep_debt, sleep_regularity_index, social_jetlag, trend_series, week_plan, week_sessions)
 
 OUT = Path(__file__).resolve().parent / "golden"
 TOL = 1e-8
@@ -155,6 +155,45 @@ def files() -> dict[str, str]:
                                   f(c.weekly_rate), f(c.kcal), f(c.protein_g), f(c.fat_g), f(c.carb_g),
                                   f(c.floor_applied), f(c.step_limited)]))
         out[f"fuel_{name}.csv"] = "\n".join(rows) + "\n"
+    # --- train ------------------------------------------------------------
+    rows = ["weight,reps,e1rm"]
+    for w in (20.0, 52.5, 100.0, 142.5):
+        for r in range(0, 15):
+            rows.append(f"{f(w)},{r},{f(e1rm(w, r))}")
+    out["train_e1rm.csv"] = "\n".join(rows) + "\n"
+
+    rows = ["sets,lo,hi,large,equipment,history,action,weight"]
+    r_ = random.Random(51)
+    presc = [Prescription(3, 6, 8, True, "barbell"), Prescription(3, 8, 10, False, "barbell"),
+             Prescription(2, 10, 12, False, "dumbbell"), Prescription(2, 10, 12, False, "cable"),
+             Prescription(3, 6, 8, False, "body"), Prescription(2, 5, 6, True, "barbell")]
+    for p in presc:
+        for _ in range(12):
+            n = r_.randint(0, 3)
+            w = r_.choice([0.0, 20.0, 22.0, 60.0, 100.0, 102.5]) if p.equipment != "body" else 0.0
+            hist = []
+            for _ in range(n):
+                ws = w if r_.random() < 0.8 else w + 2.5
+                hist.append([(ws, r_.randint(p.lo - 2, p.hi + 2)) for _ in range(p.sets)])
+            action, nw = next_load(p, hist)
+            enc = ";".join(" ".join(f"{f(x)}x{y}" for x, y in s_) for s_ in hist)
+            rows.append(f"{p.sets},{p.lo},{p.hi},{f(p.large)},{p.equipment},{enc},{action},{f(nw)}")
+    out["train_progression.csv"] = "\n".join(rows) + "\n"
+
+    rows = ["case,v0,vp,race,week,minutes,phase,recovery,capped,sessions"]
+    cases_t = {
+        "race24": (300.0, 480.0, 24, {}),
+        "norace": (240.0, 600.0, None, {}),
+        "race5": (360.0, 420.0, 5, {}),
+        "missed": (300.0, 480.0, 30, {0: 310.0, 1: 330.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 120.0, 6: 200.0}),
+    }
+    for name, (v0, vp, race, actual) in cases_t.items():
+        for i in range(0, 34):
+            wk = week_plan(i, v0, vp, race, actual)
+            ses = " ".join(f"{d}:{s_}:{f(m)}:{x}" for d, s_, m, x in week_sessions(wk))
+            rows.append(f"{name},{f(v0)},{f(vp)},{'' if race is None else race},{i},{f(wk.minutes)},{wk.phase},"
+                        f"{f(wk.recovery)},{f(wk.capped)},{ses}")
+    out["train_plan.csv"] = "\n".join(rows) + "\n"
     return out
 
 

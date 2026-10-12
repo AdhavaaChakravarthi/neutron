@@ -43,6 +43,10 @@
             android:exported="false" />
 
         <receiver
+            android:name=".notify.RestTimer$RestReceiver"
+            android:exported="false" />
+
+        <receiver
             android:name=".notify.RescheduleReceiver"
             android:exported="true">
             <intent-filter>

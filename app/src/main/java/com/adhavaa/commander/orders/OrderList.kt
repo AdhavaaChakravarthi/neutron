@@ -10,7 +10,7 @@ import kotlin.math.roundToInt
  */
 enum class OrderKind {
     WAKE, GROGGY, PEAK, DIP, CAFFEINE, NAP, MELATONIN, WIND_DOWN, SLEEPY, LIGHTS_OUT, TOMORROW, CHECK_IN,
-    WEIGH_IN, EAT_TO_TARGET,
+    WEIGH_IN, EAT_TO_TARGET, TRAIN, MOBILITY,
 }
 
 data class Order(
@@ -165,6 +165,8 @@ fun shortName(kind: OrderKind): String = when (kind) {
     OrderKind.CHECK_IN -> "Morning report"
     OrderKind.WEIGH_IN -> "Weigh in"
     OrderKind.EAT_TO_TARGET -> "Eat to target"
+    OrderKind.TRAIN -> "Train"
+    OrderKind.MOBILITY -> "Mobility"
 }
 
 /** The mission brief: what's left of today in two or three plain sentences. */

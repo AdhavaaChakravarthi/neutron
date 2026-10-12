@@ -670,3 +670,146 @@ FAST_LOSS_RATE = -MAX_LOSS_RATE   # Helms et al. 2014 upper bound; faster than t
 def losing_too_fast(ci: CheckIn | None) -> bool:
     return ci is not None and ci.weekly_rate is not None and ci.weekly_rate < FAST_LOSS_RATE
 
+
+
+# ---------------------------------------------------------------------------
+# 8. Train (MODEL.md section 11)
+# ---------------------------------------------------------------------------
+
+E1RM_MAX_REPS = 12          # ASSUMPTION: no estimate above 12 reps
+
+
+def e1rm(weight: float, reps: int) -> float | None:
+    """Epley: w (1 + r/30) for r >= 2; a single is its own 1RM. None above E1RM_MAX_REPS or for no reps."""
+    if reps <= 0 or reps > E1RM_MAX_REPS:
+        return None
+    return weight if reps == 1 else weight * (1.0 + reps / 30.0)
+
+
+PLATE_STEP = {"barbell": 2.5, "dumbbell": 2.0, "cable": 2.5, "machine": 2.5, "body": 0.0}   # ASSUMPTION
+UP_SMALL, UP_LARGE, DOWN = 0.025, 0.05, 0.10   # ASSUMPTIONS inside ACSM 2009's 2-10%
+
+
+@dataclass(frozen=True)
+class Prescription:
+    sets: int
+    lo: int
+    hi: int
+    large: bool          # lower-body main lift: bigger increase
+    equipment: str       # key of PLATE_STEP
+
+
+def _same_weight(session: Sequence[tuple[float, int]]) -> float | None:
+    ws = {w for w, _ in session}
+    return session[0][0] if len(ws) == 1 else None
+
+
+def next_load(p: Prescription, history: Sequence[Sequence[tuple[float, int]]]) -> tuple[str, float | None]:
+    """Double progression (ACSM 2009). history: working sets (weight, reps) per session, oldest first.
+    Returns (action, weight): start / up / down / hold."""
+    if not history:
+        return "start", None
+    last = history[-1]
+    w = last[0][0]
+    step = PLATE_STEP[p.equipment]
+    if len(history) >= 2:
+        a, b = history[-2], history[-1]
+        wa, wb = _same_weight(a), _same_weight(b)
+        if wa is not None and wa == wb and len(a) >= p.sets and len(b) >= p.sets:
+            if all(r >= p.hi + 1 for _, r in a) and all(r >= p.hi + 1 for _, r in b):
+                if step == 0:
+                    return "hold", w
+                target = w * (1.0 + (UP_LARGE if p.large else UP_SMALL))
+                up = math.ceil(target / step - 1e-9) * step
+                return "up", max(up, w + step)
+            if all(sum(1 for _, r in s_ if r < p.lo) * 2 > len(s_) for s_ in (a, b)):
+                if step == 0:
+                    return "hold", w
+                down = math.floor(w * (1.0 - DOWN) / step + 1e-9) * step
+                return "down", max(down, 0.0)
+    return "hold", w
+
+
+PLAN_GROWTH = 1.08          # ASSUMPTION
+RECOVERY_FACTOR = 0.7       # ASSUMPTION: every 4th week
+TAPER_FACTORS = (0.55, 0.45)  # week before race, race week. Bosquet 2007: cut 41-60% over two weeks
+CAP_FACTOR = 1.1            # ASSUMPTION: never above 110% of the biggest of the last 3 completed weeks
+RESTART_FLOOR = 0.5         # ASSUMPTION: after a break the cap restarts at half of V0
+
+
+def plan_base(i: int, v0: float, vp: float) -> float:
+    n = i - (i + 1) // 4      # non-recovery weeks up to week i
+    return min(vp, v0 * PLAN_GROWTH ** max(n, 0))
+
+
+@dataclass(frozen=True)
+class PlanWeek:
+    index: int
+    minutes: float
+    phase: str              # BASE, BUILD, TAPER, AFTER
+    recovery: bool
+    capped: bool
+
+
+def week_plan(i: int, v0: float, vp: float, race_week: int | None, actual: dict[int, float]) -> PlanWeek:
+    """Planned swim+bike+run minutes for week i (0 = setup week)."""
+    recovery = False
+    if race_week is not None and i > race_week:
+        m, phase = min(v0, 0.5 * plan_base(max(race_week - 2, 0), v0, vp)), "AFTER"
+    elif race_week is not None and i >= race_week - 1:
+        pre = plan_base(max(race_week - 2, 0), v0, vp)
+        m, phase = pre * (TAPER_FACTORS[0] if i == race_week - 1 else TAPER_FACTORS[1]), "TAPER"
+    else:
+        recovery = i % 4 == 3
+        m = plan_base(i, v0, vp) * (RECOVERY_FACTOR if recovery else 1.0)
+        phase = "BASE" if race_week is None or race_week - i >= 13 else "BUILD"
+    prior = [actual[j] for j in (i - 1, i - 2, i - 3) if j in actual]
+    capped = False
+    if prior:
+        cap = max(CAP_FACTOR * max(prior), RESTART_FLOOR * v0)
+        if m > cap:
+            m, capped = cap, True
+    return PlanWeek(i, m, phase, recovery, capped)
+
+
+# The week (MODEL.md 11.3): (ISO day, sport, weight, base intensity, build intensity, build only)
+WEEK_SLOTS = [
+    (1, "SWIM", 1.0, "easy", "easy", False),
+    (2, "RUN", 0.8, "easy", "easy", False),
+    (4, "BIKE", 1.2, "quality", "quality", False),
+    (5, "SWIM", 1.0, "easy", "quality", False),
+    (6, "BIKE", 2.6, "easy", "easy", False),
+    (6, "RUN", 0.4, "easy", "easy", True),     # brick run off the long ride
+    (7, "RUN", 1.8, "easy", "easy", False),
+]
+MIN_SESSION = 15.0          # ASSUMPTION
+
+
+def round5(x: float) -> float:
+    return math.floor(x / 5.0 + 0.5) * 5.0
+
+
+def week_sessions(week: PlanWeek) -> list[tuple[int, str, float, str]]:
+    """(day, sport, minutes, intensity) for a planned week."""
+    if week.minutes <= 0:
+        return []
+    build = week.phase in ("BUILD", "TAPER")
+    slots = [s_ for s_ in WEEK_SLOTS if build or not s_[5]]
+    total = sum(s_[2] for s_ in slots)
+    out = []
+    for day, sport, wgt, base_i, build_i, _ in slots:
+        intensity = "easy" if week.recovery or week.phase == "AFTER" else (build_i if build else base_i)
+        out.append((day, sport, max(MIN_SESSION, round5(week.minutes * wgt / total)), intensity))
+    return out
+
+
+def session_load(minutes: float, rpe: float) -> float:
+    """Foster 2001: session RPE (0-10) x minutes."""
+    return minutes * rpe
+
+
+EASY_RPE = 4                # ASSUMPTION: a session rated 4 or below counts as easy
+
+
+def easy_share(rpes: Sequence[float]) -> float | None:
+    return None if not rpes else sum(1 for r in rpes if r <= EASY_RPE) / len(rpes)

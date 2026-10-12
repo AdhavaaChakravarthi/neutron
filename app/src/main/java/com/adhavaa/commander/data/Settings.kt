@@ -23,6 +23,7 @@ data class Settings(
     /** Days with no fixed wake time; nights before them are "free" nights for chronotype and social jetlag. */
     val freeDays: Set<DayOfWeek> = DEFAULT_FREE_DAYS,
     val fuel: FuelSettings = FuelSettings(),
+    val train: TrainSettings = TrainSettings(),
 ) {
     companion object {
         val DEFAULT_BEDTIME: LocalTime = LocalTime.of(23, 30)
@@ -78,6 +79,26 @@ data class FuelSettings(
         const val DEFAULT_RATE = -0.005
         /** Goal choices (D-61), fraction of body weight per week. */
         val RATES = listOf(-0.01, -0.005, -0.0025, 0.0, 0.0025, 0.005)
+    }
+}
+
+/**
+ * Train setup (MODEL.md section 11). [start] is null until setup; the plan's week 0 is the week containing it.
+ * Minutes are weekly swim + bike + run. [swaps] maps a program slot to a replacement exercise id.
+ */
+data class TrainSettings(
+    val start: LocalDate? = null,
+    val raceDate: LocalDate? = null,
+    val currentMinutes: Double = DEFAULT_CURRENT_MIN,
+    val peakMinutes: Double = DEFAULT_PEAK_MIN,
+    val swaps: Map<String, String> = emptyMap(),
+) {
+    val setUp: Boolean get() = start != null
+
+    companion object {
+        const val DEFAULT_CURRENT_MIN = 240.0
+        /** ASSUMPTION (MODEL.md 11.3). */
+        const val DEFAULT_PEAK_MIN = 480.0
     }
 }
 

@@ -1,6 +1,6 @@
 # Commander model
 
-How Commander turns sleep history into a sleep-need estimate, a sleep-debt number and a daily energy curve, and food and weight logs into calorie and macro targets (§10). Every parameter has a source or is labelled **ASSUMPTION** or **RECONSTRUCTED**. The executable version is `tools/model-reference/commander_model.py`; `check_model.py` runs the behavioural checks below.
+How Commander turns sleep history into a sleep-need estimate, a sleep-debt number and a daily energy curve, food and weight logs into calorie and macro targets (§10), and training logs into a lifting program, an endurance plan and mobility work (§11). Every parameter has a source or is labelled **ASSUMPTION** or **RECONSTRUCTED**. The executable version is `tools/model-reference/commander_model.py`; `check_model.py` runs the behavioural checks below.
 
 Commander is a personal wellness tool. Nothing here diagnoses or treats a sleep disorder or any other condition.
 
@@ -105,10 +105,10 @@ Implemented in `plan_day` / `plan_for_schedule` (Python) and `planDay` / `planFo
 
 `python3 tools/model-reference/check_model.py` currently reports:
 
-- **Pass (23):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check; the 10 fuel checks in §10.
+- **Pass (34):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check; the 10 fuel checks in §10; the 11 Train checks in §11.5.
 - **Known limitations (3, reported every run, don't fail the build):** no afternoon dip/second wind; no accumulation across short nights; one recovery night fully restores. Decided in D-25 and D-26.
 
-`python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules, real-night histories, and trend weight and check-ins for four fuel cases). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
+`python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules, real-night histories, trend weight and check-ins for four fuel cases, and Train's 1RM estimates, progression decisions and four endurance plans with their sessions). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
 
 ## 9. Real nights
 
@@ -192,6 +192,102 @@ The simulated person eats target ± 150 kcal and weighs in daily with ± 0.4 kg 
 
 **Limits.** For the first three weeks expenditure is the formula guess. Water shifts after a change in carbohydrate or salt bend the weight fit for a week or two. Training days aren't modelled separately yet; expenditure is a 21-day average.
 
+## 11. Train
+
+Implemented in section 8 of `commander_model.py` and in `model/.../Train.kt`; golden vectors in `golden/train_*.csv`. The program lives in `app/.../train/Program.kt`. Exercise names, muscles and instructions come from free-exercise-db [43] (public domain). Commander is not a coach and doesn't diagnose injuries; pain means stop (rule of command 6).
+
+### 11.1 Lifting: 4 days, upper/lower, full gym
+
+ACSM recommends training each major muscle group at least twice a week [32]. For intermediate lifters it lists an upper/lower split at 4 days a week as an option [31]. The week has two lower days and two upper days, so each muscle gets two sessions.
+
+| Day | Exercises (sets × reps) |
+|---|---|
+| Lower A | Barbell squat 3 × 6–8 · Romanian deadlift 3 × 8–10 · Lying leg curl 2 × 10–12 · Standing calf raise 3 × 10–12 · Plank 3 × 30–45 s |
+| Upper A | Barbell bench press 3 × 6–8 · Bent-over barbell row 3 × 8–10 · Dumbbell shoulder press 2 × 8–10 · Wide-grip lat pulldown 2 × 10–12 · Triceps pushdown 2 × 10–12 · Barbell curl 2 × 10–12 |
+| Lower B | Barbell deadlift 2 × 5–6 · Split squat with dumbbells 3 × 8–10 · Leg extension 2 × 10–12 · Seated calf raise 3 × 12–15 · Hanging leg raise 2 × 10–12 |
+| Upper B | Pull-up 3 × 6–8 · Incline dumbbell press 3 × 8–10 · Seated cable row 3 × 10–12 · Side lateral raise 2 × 12–15 · Face pull 2 × 12–15 · Hammer curl 2 × 10–12 |
+
+- **Loads and reps.** Main lifts sit at 6–8 reps, near the ~80% of 1RM ACSM gives for strength (2–3 sets) [32]. Accessories use 8–12 reps over 1–3 sets, ACSM's moderate loading for growth [31]. The exercise choice and set counts are **ASSUMPTIONS** (D-64).
+- **Weekly sets.** ACSM 2026 gives about 10 sets per muscle group a week for growth [32]. The program gives about 5–13 weekly sets per muscle, most of them 6–10, because swimming, cycling and running add their own fatigue (**ASSUMPTION**, D-65). Every major muscle (chest, back, shoulders, quads, hamstrings, glutes, calves) is trained on at least two days, which a test checks. The Train tab counts your weekly sets per muscle: an exercise's primary muscle counts 1 per set, each secondary muscle 0.5 (**ASSUMPTION**).
+- **Effort.** Stop most sets with 1–3 reps in reserve (RIR), the repetitions-in-reserve scale of Zourdos et al. [34]. ACSM 2026 found training to failure wasn't needed for the average healthy adult [32]. The 1–3 is an **ASSUMPTION**.
+- **Rest.** At least 2–3 min between sets of the main heavy lifts and 1–2 min for assistance work [31]. The timer uses 2.5 min and 1.5 min (**ASSUMPTION**: the middle of each range).
+- **Warm-up.** About 5 minutes of dynamic movement first. Static stretching before training is kept under 60 s per muscle and followed by dynamic activity: Behm et al. found larger performance losses with ≥ 60 s of static stretching per muscle group (−4.6%) than with < 60 s (−1.1%) [40].
+
+**Progression (double progression).** ACSM: increase the load by 2–10% (less for small-muscle exercises, more for large) once you can do 1–2 reps more than the target on two sessions in a row [31]. Commander's version:
+
+- Target = the top of the rep range. If every working set of the last two sessions of an exercise, at the same weight, reached target + 1 or more, the weight goes up 2.5% (upper body and small muscles) or 5% (lower-body main lifts), rounded up to the next plate step (2.5 kg barbell, 2 kg dumbbell, 2.5 kg cable or machine). The percentages and steps are **ASSUMPTIONS** inside ACSM's 2–10%.
+- If most sets of the last two sessions fell below the bottom of the range at the same weight, the weight drops 10% (**ASSUMPTION**).
+- Otherwise the weight stays and the order is "beat last time": one more rep on the set that fell shortest.
+- With no history, you choose a weight you could lift for the top of the range with 2–3 reps to spare (**ASSUMPTION**).
+- Bodyweight exercises (pull-up, hanging leg raise, plank) progress by reps or seconds. Pull-ups can take added weight.
+
+**Estimated 1RM.** Epley: 1RM = w × (1 + r / 30) for r ≥ 2; a single is its own 1RM [33]. Shown only for sets of 12 reps or fewer (**ASSUMPTION**). Estimates can be 10% or more off a tested 1RM. It's a trend line, not a test.
+
+### 11.2 Swim, bike, run
+
+**Session load.** Foster's session RPE: about 30 minutes after a session, rate the whole session from 0 to 10 ("How was your workout?"), then load = rating × minutes [35]. Scale anchors: 0 rest, 1 very, very easy, 2 easy, 3 moderate, 4 somewhat hard, 5 hard, 7 very hard, 9 nearly maximal, 10 maximal (Borg's CR-10 as reproduced in [35]; anchors checked via a secondary source). Lifting sessions get a rating too.
+
+**Easy share.** Successful endurance athletes do about 80% of their sessions at low intensity [36]. Commander counts a swim, bike or run session as easy when its rating is 4 or below (**ASSUMPTION**: no heart-rate strap, so effort stands in for intensity) and shows the share over the last 4 weeks against 80%.
+
+**70.3 distances.** Swim 1.9 km, bike 90 km, run 21.1 km [42].
+
+### 11.3 The endurance plan
+
+Inputs:
+
+- **V0:** your current weekly swim + bike + run minutes, from setup.
+- **Vp:** the most weekly minutes you can give (default 480, **ASSUMPTION**).
+- **Race date:** optional.
+
+Week 0 is the week you set up, Monday to Sunday.
+
+- **Ramp.** Build weeks grow 8% a week (**ASSUMPTION**). The usual "10% rule" isn't a protective limit: in a trial with novice runners, a program built on it had the same injury rate as a faster standard program (20.8% vs 20.3%) [38]. So 8% is a cautious choice, not a measured one. base(i) = min(Vp, V0 × 1.08^n), where n counts the non-recovery weeks up to week i.
+- **Recovery weeks.** Every fourth week runs at 70% of base (**ASSUMPTION**).
+- **Taper.** The week before the race and race week run at 55% and 45% of the last pre-taper base, with intensity and frequency kept. In Bosquet et al.'s meta-analysis, a two-week taper that cut volume by 41–60% without changing intensity or frequency worked best [37]. The 55%/45% split (cuts of 45% and 55%) is an **ASSUMPTION** inside that range.
+- **After the race.** Easy maintenance at min(V0, half the last base) until you set the next goal (**ASSUMPTION**).
+- **No sudden jumps (rule of command 3).** A week's plan is never more than 110% of your biggest week in the last three completed weeks. If that falls below half of V0 (after illness or a break), the cap restarts at half of V0 (**ASSUMPTIONS**).
+- **Phases** by weeks to race (race week = 0): Base 13 or more, Build 2–12, Taper 1 and 0, After once the race is past, Base with no race date. Recovery weeks are always easy. The taper keeps Build's sessions and intensity.
+
+**The week.** Planned minutes are spread over a fixed week by weight (**ASSUMPTIONS**, D-66). Each session is rounded to 5 minutes, at least 15.
+
+| Day | Lifting | Endurance (weight) | Base | Build |
+|---|---|---|---|---|
+| Mon | Lower A | Swim (1.0) | easy | easy |
+| Tue | Upper A | Run (0.8) | easy | easy (your fruit day) |
+| Wed | — | rest, mobility | | |
+| Thu | Lower B | Bike (1.2) | quality | quality |
+| Fri | Upper B | Swim (1.0) | easy | quality |
+| Sat | — | Long bike (2.6), plus brick run (0.4) in Build | easy | easy + brick |
+| Sun | — | Long run (1.8) | easy | easy |
+
+"Quality" means intervals with no more than about a fifth of the session hard, which keeps the week near 80% easy [36].
+
+**Sleep and stand-down.**
+
+- With sleep debt in the High band (> 5 h, §4), quality sessions become easy, and lifting drops one set per exercise with RIR 3 or more. Sleep loss tends to impair exercise performance, though findings conflict [41]. The threshold and changes are **ASSUMPTIONS**.
+- "Stand down" (pain, illness or exhaustion) replaces the day's training with rest. Pain gets one extra line: don't train through it, and see a doctor or physiotherapist if it lasts or worsens.
+- Stopping signs during exercise (chest pain, faintness, unusual breathlessness) mean stop and get medical help. That is general safety advice, not a model parameter.
+
+### 11.4 Mobility
+
+ACSM: flexibility exercises at least 2–3 days a week (daily is most effective), holding a static stretch 10–30 s to the point of tightness or slight discomfort [39].
+
+- **Recovery stretch** (daily, after training or in the evening, ~8 min): kneeling hip flexor, hamstring, standing calf, soleus and Achilles, side-lying quad, ankle-on-the-knee glute, chest and front of shoulder, one-arm-against-wall lat, child's pose. Each is held 30 s, on each side where one-sided (the top of ACSM's 10–30 s). The selection is an **ASSUMPTION** aimed at what running, cycling and swimming tighten.
+- **Warm-up** (before lifting or running, ~5 min): arm circles, standing hip circles, front leg raises, world's greatest stretch, inchworm, dynamic chest stretch, 30 s each. It's dynamic, so it fits Behm et al.'s advice [40].
+- **Order:** "Mobility, 8 min" 45 minutes before wind-down (**ASSUMPTION**). The player times each hold.
+
+### 11.5 Checks
+
+`check_model.py` adds Train checks:
+
+- Epley worked examples.
+- Progression adds weight only after two qualifying sessions, rounds to the plate step, and drops after two failed sessions.
+- The plan never rises more than 8% a week outside recovery weeks.
+- Recovery weeks are lower.
+- Each taper week is 41–60% below the pre-taper base.
+- The cap follows a missed week.
+- Session minutes add up to the week's plan within rounding.
+
 ---
 
 ## Sources
@@ -227,3 +323,16 @@ Retrieved and checked during Phase 1 unless marked. † = the paper and its find
 28. Institute of Medicine. *Dietary Reference Intakes for Energy, Carbohydrate, Fiber, Fat, Fatty Acids, Cholesterol, Protein, and Amino Acids*. National Academies Press; 2005. doi:10.17226/10490 (fat range checked via the EU Knowledge for Policy summary table)
 29. Burke LM, Hawley JA, Wong SHS, Jeukendrup AE. Carbohydrates for training and competition. *Journal of Sports Sciences*. 2011;29(S1):S17–S27. doi:10.1080/02640414.2011.585473 (bands checked; activity wording via a textbook table that reproduces them)
 30. U.S. Department of Agriculture, Agricultural Research Service. USDA National Nutrient Database for Standard Reference, Legacy Release (SR Legacy). Public domain. Read from the SQLite build in nutratech/usda-sqlite release 0.0.9.
+31. Ratamess NA, Alvar BA, Evetoch TK, Housh TJ, Kibler WB, Kraemer WJ, Triplett NT. American College of Sports Medicine position stand. Progression models in resistance training for healthy adults. *Medicine and Science in Sports and Exercise*. 2009;41(3):687–708. doi:10.1249/MSS.0b013e3181915670
+32. Currier BS, D'Souza AC, Singh MAF, et al. American College of Sports Medicine position stand. Resistance training prescription for muscle function, hypertrophy, and physical performance in healthy adults: an overview of reviews. *Medicine and Science in Sports and Exercise*. 2026;58(4):851–872. doi:10.1249/mss.0000000000003897 (recommendations checked via ACSM's infographic and announcement; the full text was not read)
+33. Epley B. Poundage chart. In: *Boyd Epley Workout*. Lincoln, NE: Body Enterprises; 1985:86. ‡ (formula as given on Wikipedia's "One-repetition maximum" page)
+34. Zourdos MC, Klemp A, Dolan C, et al. Novel resistance training-specific rating of perceived exertion scale measuring repetitions in reserve. *Journal of Strength and Conditioning Research*. 2016;30(1):267–275. doi:10.1519/JSC.0000000000001049
+35. Foster C, Florhaug JA, Franklin J, Gottschall L, Hrovatin LA, Parker S, Doleshal P, Dodge C. A new approach to monitoring exercise training. *Journal of Strength and Conditioning Research*. 2001;15(1):109–115.
+36. Seiler S. What is best practice for training intensity and duration distribution in endurance athletes? *International Journal of Sports Physiology and Performance*. 2010;5(3):276–291. doi:10.1123/ijspp.5.3.276 † (the author name is from memory)
+37. Bosquet L, Montpetit J, Arvisais D, Mujika I. Effects of tapering on performance: a meta-analysis. *Medicine and Science in Sports and Exercise*. 2007;39(8):1358–1365. doi:10.1249/mss.0b013e31806010e0
+38. Buist I, Bredeweg SW, van Mechelen W, Lemmink KAPM, Pepping G-J, Diercks RL. No effect of a graded training program on the number of running-related injuries in novice runners: a randomized controlled trial. *American Journal of Sports Medicine*. 2008;36(1):33–39. doi:10.1177/0363546507307505
+39. American College of Sports Medicine. *ACSM's Guidelines for Exercise Testing and Prescription*, 11th ed., Table 5.6 (flexibility). ‡ (checked via ACSM's own summary, "Stretching and Flexibility Guidelines Update", 2021)
+40. Behm DG, Blazevich AJ, Kay AD, McHugh M. Acute effects of muscle stretching on physical performance, range of motion, and injury incidence in healthy active individuals: a systematic review. *Applied Physiology, Nutrition, and Metabolism*. 2016;41(1):1–11. doi:10.1139/apnm-2015-0235
+41. Fullagar HHK, Skorski S, Duffield R, Hammes D, Coutts AJ, Meyer T. Sleep and athletic performance: the effects of sleep loss on exercise performance, and physiological and cognitive responses to exercise. *Sports Medicine*. 2015;45(2):161–186. doi:10.1007/s40279-014-0260-0
+42. IRONMAN 70.3 race distances, as stated on Wikipedia's "Ironman 70.3" page (ironman.com could not be reached).
+43. yuhonas. free-exercise-db (exercises.json, 876 exercises), released under the Unlicense. github.com/yuhonas/free-exercise-db. Images are not bundled.

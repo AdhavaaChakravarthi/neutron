@@ -41,7 +41,7 @@ import com.adhavaa.commander.notify.OrderNotifier
 import com.adhavaa.commander.notify.PhoneUsage
 
 /** Top-level destinations, in bottom-bar order. Later modules add tabs here. */
-enum class Tab(val label: String) { TODAY("Today"), SLEEP("Sleep"), FUEL("Fuel") }
+enum class Tab(val label: String) { TODAY("Today"), SLEEP("Sleep"), FUEL("Fuel"), TRAIN("Train") }
 
 @Composable
 fun CommanderApp(vm: CommanderViewModel = viewModel()) {
@@ -82,6 +82,7 @@ fun CommanderApp(vm: CommanderViewModel = viewModel()) {
                 var tab by rememberSaveable { mutableStateOf(Tab.TODAY) }
                 var settingsOpen by rememberSaveable { mutableStateOf(false) }
                 var fuelFullScreen by remember { mutableStateOf(false) }
+                var trainFullScreen by remember { mutableStateOf(false) }
                 if (settingsOpen) {
                     BackHandler { settingsOpen = false }
                     SettingsScreen(
@@ -118,6 +119,7 @@ fun CommanderApp(vm: CommanderViewModel = viewModel()) {
                                             onRate = vm::rate,
                                             onLogWeight = { kg -> vm.logWeight(s.now.toLocalDate(), kg) },
                                             onOpenFuel = { tab = Tab.FUEL },
+                                            onOpenTrain = { tab = Tab.TRAIN },
                                         ),
                                         banner = {
                                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -149,10 +151,12 @@ fun CommanderApp(vm: CommanderViewModel = viewModel()) {
                                         ),
                                     )
                                     Tab.FUEL -> FuelRoute(onOpenSettings = { settingsOpen = true }, onFullScreen = { fuelFullScreen = it })
+                                    Tab.TRAIN -> TrainRoute(onOpenSettings = { settingsOpen = true }, onFullScreen = { trainFullScreen = it })
                                 }
                             }
                         }
-                        if (!(tab == Tab.FUEL && fuelFullScreen)) BottomBar(tab) { tab = it }
+                        val fullScreen = (tab == Tab.FUEL && fuelFullScreen) || (tab == Tab.TRAIN && trainFullScreen)
+                        if (!fullScreen) BottomBar(tab) { tab = it }
                     }
                 }
             }

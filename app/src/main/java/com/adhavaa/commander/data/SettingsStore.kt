@@ -51,7 +51,23 @@ class SettingsStore(context: Context) {
         val fuelFruitDays = stringSetPreferencesKey("fuel_fruit_days")
         val fuelVeganDays = stringSetPreferencesKey("fuel_vegan_days")
         val fuelFishOnly = booleanPreferencesKey("fuel_fish_only")
+        val trainStart = longPreferencesKey("train_start_epoch_day")
+        val trainRace = longPreferencesKey("train_race_epoch_day")
+        val trainCurrent = doublePreferencesKey("train_current_min")
+        val trainPeak = doublePreferencesKey("train_peak_min")
+        val trainSwaps = stringSetPreferencesKey("train_swaps")
     }
+
+    private fun train(p: Preferences): TrainSettings = TrainSettings(
+        start = p[Keys.trainStart]?.let(LocalDate::ofEpochDay),
+        raceDate = p[Keys.trainRace]?.let(LocalDate::ofEpochDay),
+        currentMinutes = p[Keys.trainCurrent] ?: TrainSettings.DEFAULT_CURRENT_MIN,
+        peakMinutes = p[Keys.trainPeak] ?: TrainSettings.DEFAULT_PEAK_MIN,
+        swaps = p[Keys.trainSwaps].orEmpty().mapNotNull { e ->
+            val i = e.indexOf('=')
+            if (i <= 0) null else e.substring(0, i) to e.substring(i + 1)
+        }.toMap(),
+    )
 
     private fun days(names: Set<String>?, fallback: Set<DayOfWeek>): Set<DayOfWeek> =
         names?.mapNotNull { name -> DayOfWeek.entries.firstOrNull { it.name == name } }?.toSet() ?: fallback
@@ -94,6 +110,7 @@ class SettingsStore(context: Context) {
                     ?.toSet()
                     ?: Settings.DEFAULT_FREE_DAYS,
                 fuel = fuel(p),
+                train = train(p),
             )
         }
 
@@ -158,6 +175,22 @@ class SettingsStore(context: Context) {
             it[Keys.fuelVeganDays] = f.veganDays.map { d -> d.name }.toSet()
             it[Keys.fuelFishOnly] = f.fishOnly
         }
+    }
+
+    /** Saves Train's plan settings. The start day is kept from the first setup so the plan's weeks don't move. */
+    suspend fun setTrain(t: TrainSettings, today: LocalDate) {
+        store.edit {
+            if (it[Keys.trainStart] == null) it[Keys.trainStart] = (t.start ?: today).toEpochDay()
+            if (t.raceDate == null) it.remove(Keys.trainRace) else it[Keys.trainRace] = t.raceDate.toEpochDay()
+            it[Keys.trainCurrent] = t.currentMinutes
+            it[Keys.trainPeak] = maxOf(t.peakMinutes, t.currentMinutes)
+        }
+    }
+
+    /** Replaces the exercise in a program slot, or restores the original with null. */
+    suspend fun setSwap(slot: String, exerciseId: String?, current: Map<String, String>) {
+        val next = if (exerciseId == null) current - slot else current + (slot to exerciseId)
+        store.edit { it[Keys.trainSwaps] = next.map { (k, v) -> "$k=$v" }.toSet() }
     }
 
     suspend fun resetOnboarding() {

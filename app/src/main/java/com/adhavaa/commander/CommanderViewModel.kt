@@ -10,6 +10,9 @@ import com.adhavaa.commander.fuel.FuelPicture
 import com.adhavaa.commander.fuel.Nutrients
 import com.adhavaa.commander.fuel.fuelPicture
 import com.adhavaa.commander.fuel.totals
+import com.adhavaa.commander.train.TrainData
+import com.adhavaa.commander.train.TrainPicture
+import com.adhavaa.commander.train.trainPicture
 import com.adhavaa.commander.model.SleepKind
 import com.adhavaa.commander.model.SleepPicture
 import com.adhavaa.commander.model.SleepRecord
@@ -73,6 +76,8 @@ sealed interface UiState {
         /** Today's fuel numbers, for the weigh-in order and the brief. */
         val fuel: FuelPicture? = null,
         val eaten: Nutrients = Nutrients.ZERO,
+        /** Today's training, for the Train and Mobility orders. */
+        val train: TrainPicture? = null,
     ) : UiState
     data class Failed(val message: String) : UiState
 }
@@ -111,6 +116,17 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
         c.settings.settings.map { it.fuel }, c.fuel.observeWeights(), c.fuel.observeDailyKcal(), c.fuel.observeIncomplete(),
     ) { s, w, k, inc -> FuelData(s, w, k, inc) }.distinctUntilChanged()
 
+    private val trainData: Flow<TrainData> = combine(
+        c.settings.settings.map { it.train }, c.train.observeWorkouts(), c.train.observeSets(), c.train.observeStandDowns(),
+    ) { t, w, sets, sd -> TrainData(t, w, sets, sd) }.distinctUntilChanged()
+
+    private data class Extras(
+        val detected: Pair<LocalDate, DetectedNight?>?,
+        val access: Boolean,
+        val fuel: Pair<FuelPicture, Nutrients>,
+        val train: TrainData,
+    )
+
     // Food days are calendar days. Today's picture is rebuilt when the date turns or fuel data changes.
     @OptIn(ExperimentalCoroutinesApi::class)
     private val fuelToday: Flow<Pair<FuelPicture, Nutrients>> = clock.map { it.toLocalDate() }.distinctUntilChanged()
@@ -118,8 +134,11 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
 
     val state: StateFlow<UiState> = combine(
         data, c.sleep.observeSleep(), c.sleep.observeDone(), clock,
-        combine(detected, usageAccess, fuelToday) { d, a, f -> Triple(d, a, f) },
-    ) { d, stored, done, now, (det, access, fuel) ->
+        combine(detected, usageAccess, fuelToday, trainData) { d, a, f, t -> Extras(d, a, f, t) },
+    ) { d, stored, done, now, x ->
+        val det = x.detected
+        val access = x.access
+        val fuel = x.fuel
         try {
             val date = d.planDate(now)
             val p = picture(d, date)
@@ -141,6 +160,7 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
                 report = report,
                 fuel = fuel.first,
                 eaten = fuel.second,
+                train = trainPicture(x.train, now.toLocalDate(), now.toLocalDate(), p.stats.debtH),
             )
         } catch (e: RuntimeException) {
             UiState.Failed(e.message ?: e.javaClass.simpleName)

@@ -21,8 +21,8 @@ Following every order for 7 months only works if no order can hurt you and every
 |---|---|
 | Sleep and energy | Built: real nights, debt, need learning, rhythm stats, morning report, reminders |
 | Fuel (nutrition) | Built: food log on the USDA database, your foods and recipes, weigh-ins and trend, adaptive expenditure, weekly check-in, targets, weigh-in order (MODEL.md §10) |
-| Training | Planned: strength, triathlon (70.3) and mobility. Spec with sourced rules before any code |
-| Mobility | Planned, with Training |
+| Train | Built: 4-day upper/lower gym program with double progression, set logger with rest timer, swim/bike/run log with effort-based load, a 70.3 plan with recovery weeks and taper, mobility routines, stand-down (MODEL.md §11) |
+| Mobility | Built, inside Train |
 | Gut log | Planned. Logging and patterns only, no diagnosis |
 
 The order of the later modules is open; ARCHITECTURE.md lists the phases.
@@ -91,6 +91,19 @@ Debt with its band and a 14-day bar chart against your need; need (learned or ma
 - **Setup.** Sex (for the equation), birth year, height, this morning's weight, activity band, goal, check-in day, and your practices: fruit days, vegan days, fish but no meat. A health note says who should check with a doctor or dietitian first.
 
 On Today, Fuel adds the weigh-in order (15 min after waking; "Log weight" right on the order), the eat-to-target order when it applies, and a fuel line in the mission brief.
+
+### Train tab (built)
+
+- **Today.** The day's lift (Lower A, Upper A, Lower B or Upper B) with a Start or Continue button, the planned swim, bike or run with minutes and easy or quality, mobility, a 5-minute warm-up, "log other", and "stand down" for pain, illness or exhaustion. With high sleep debt the day is eased: quality becomes easy and lifts drop a set.
+- **Lift logger.** Each exercise shows its sets × reps, rest, and today's target from double progression ("Up to 105 kg", "100 kg · beat 9, 9, 8", or how to pick a first weight). Log weight, reps and optional reps in reserve. Logging a set starts the rest timer, which also notifies with the screen locked. "How" shows instructions and lets you swap the exercise for one that trains the same main muscle. Finishing asks for the session rating (0–10).
+- **Session log.** Swim, bike, run or other, with minutes, distance, rating and a brick flag.
+- **This week.** Seven days with what each asks for and a tick when it's done.
+- **Load.** Minutes done against planned per sport, weekly load (rating × minutes), the 4-week easy share against 80%, and sets per muscle against ~10.
+- **Plan.** Race date, hours now and at most, this week's minutes, and a bar chart of every week to the race (dots for what you did). "Edit plan" changes it.
+- **Lifts.** Every exercise in the program with its last session, best estimated 1RM and next target.
+- **Mobility player.** One hold at a time: name, side, a big countdown, how to do it, what's next. The screen stays on. It logs when done.
+
+On Today, Train adds the "Train" order after the groggy window, with today's session and an Open Train button, and a "Mobility" order 45 minutes before wind-down. Both tick themselves when logged. A "Train:" line joins the mission brief.
 
 ### Morning check-in (original plan)
 

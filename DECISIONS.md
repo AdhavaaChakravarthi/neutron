@@ -72,3 +72,13 @@ None right now. The next module spec (see ARCHITECTURE.md phases) will raise its
 | D-60 | A day counts for expenditure when it has at least one entry and isn't marked "not fully logged" | Claude | Partly logged days would pull the estimate down |
 | D-61 | Goal choices: lose 1, 0.5 or 0.25% a week, maintain, gain 0.25 or 0.5% a week; setup suggests lose 0.5% | Claude | Helms et al. 2014; the slower end protects triathlon training |
 | D-62 | Daily weigh-in order after waking, on by default once Fuel is set up | Claude | The trend and expenditure need frequent weigh-ins |
+| D-63 | Train (phase 8) goes ahead of phases 6–7, the way reminders were (D-42); the two-week trial runs alongside it | You | You asked for the exercise tracker next |
+| D-64 | Release scope: all of Train at once. Lifting 4 days a week, upper/lower, full gym; the program in MODEL.md §11.1 | You (scope, days, gym); Claude (exercises) | ACSM 2009 lists a 4-day upper/lower split for intermediates; ACSM 2026 says each muscle at least twice a week |
+| D-65 | Lifting starts at ~5–13 weekly sets per muscle, most 6–10 (ACSM's ~10 is for growth) | Claude | Concurrent swim/bike/run fatigue; rule of command 3 |
+| D-66 | Fixed default week: Lower A/Upper A/rest/Lower B/Upper B/long bike/long run, with endurance minutes spread by weight; Tuesday (your fruit day) stays easy | Claude | Keeps a full rest day and 48 h between lower days and the long ride; editing the week is a later step |
+| D-67 | Double progression per ACSM 2009: +2.5% (upper, small) or +5% (lower main lifts) after two sessions at target+1 on every set; −10% after two sessions mostly below range | Claude | ACSM's 2–10% band; plate rounding 2.5 kg barbell, 2 kg dumbbell |
+| D-68 | Endurance plan: +8% a week, every 4th week at 70%, two-week taper at 55%/45%, never above 110% of your biggest recent week | Claude | Buist 2008 found the 10% rule no safer, so no number is protective; these are cautious picks; Bosquet 2007 for the taper |
+| D-69 | No heart-rate strap, so effort (session RPE ≤ 4) stands in for "easy", and load is RPE × minutes | Claude | Foster 2001; Seiler 2010 |
+| D-70 | High sleep debt makes quality sessions easy and drops one set per lift; "stand down" replaces the day with rest | Claude | Rules of command 5 and 6; Fullagar 2015 |
+| D-71 | Mobility: daily ~8-min static routine (30 s per stretch, each side), dynamic 5-min warm-up before training; ordered 45 min before wind-down | Claude | ACSM flexibility guidance; Behm 2016 on static stretching before performance |
+| D-72 | Exercise data from free-exercise-db (Unlicense), names, muscles and instructions only, no images | Claude | Public domain and offline |

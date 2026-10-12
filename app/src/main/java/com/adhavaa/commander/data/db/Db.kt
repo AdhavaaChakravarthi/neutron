@@ -90,6 +90,43 @@ data class FuelDayEntity(@PrimaryKey val epochDay: Long, val incomplete: Boolean
 
 data class DayKcal(val epochDay: Long, val kcal: Double)
 
+/**
+ * A training session: a lift (sets in [SetEntity]), a swim, bike or run, or mobility. [endMs] is null while a lift
+ * is in progress. [rpe] is Foster's session RPE (0-10).
+ */
+@Entity(tableName = "workout")
+data class WorkoutEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val epochDay: Long,
+    val kind: String,
+    val label: String,
+    val startMs: Long,
+    val endMs: Long?,
+    val minutes: Double,
+    val distanceKm: Double?,
+    val rpe: Double?,
+    val notes: String,
+    val brick: Boolean,
+)
+
+/** One lifted set. For a timed exercise, [reps] holds seconds. */
+@Entity(tableName = "set_log")
+data class SetEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val workoutId: Long,
+    val epochDay: Long,
+    val exercise: String,
+    val setIndex: Int,
+    val weightKg: Double,
+    val reps: Int,
+    val rir: Int?,
+    val atMs: Long,
+)
+
+/** A stand-down day (PAIN / ILLNESS / EXHAUSTED). */
+@Entity(tableName = "train_day")
+data class TrainDayEntity(@PrimaryKey val epochDay: Long, val standDown: String)
+
 @Dao
 interface CommanderDao {
     @Query("SELECT * FROM sleep WHERE endMs >= :fromMs ORDER BY endMs")
@@ -195,14 +232,65 @@ interface CommanderDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertFuelDay(e: FuelDayEntity)
+
+    // --- Train --------------------------------------------------------------------------------
+
+    @Query("SELECT * FROM workout ORDER BY epochDay, startMs")
+    fun observeWorkouts(): Flow<List<WorkoutEntity>>
+
+    @Query("SELECT * FROM workout WHERE epochDay = :epochDay")
+    suspend fun workoutsOn(epochDay: Long): List<WorkoutEntity>
+
+    @Query("SELECT * FROM workout WHERE kind = :kind AND endMs IS NULL")
+    suspend fun openLifts(kind: String): List<WorkoutEntity>
+
+    @Query("SELECT * FROM workout WHERE id = :id")
+    suspend fun workout(id: Long): WorkoutEntity?
+
+    @Insert
+    suspend fun insertWorkout(e: WorkoutEntity): Long
+
+    @Update
+    suspend fun updateWorkout(e: WorkoutEntity)
+
+    @Query("DELETE FROM workout WHERE id = :id")
+    suspend fun deleteWorkout(id: Long)
+
+    @Query("SELECT * FROM set_log ORDER BY epochDay, atMs")
+    fun observeSets(): Flow<List<SetEntity>>
+
+    @Query("SELECT * FROM set_log WHERE workoutId = :workoutId ORDER BY setIndex")
+    suspend fun setsOf(workoutId: Long): List<SetEntity>
+
+    @Insert
+    suspend fun insertSet(e: SetEntity): Long
+
+    @Update
+    suspend fun updateSet(e: SetEntity)
+
+    @Query("DELETE FROM set_log WHERE id = :id")
+    suspend fun deleteSet(id: Long)
+
+    @Query("DELETE FROM set_log WHERE workoutId = :workoutId")
+    suspend fun deleteSetsOf(workoutId: Long)
+
+    @Query("SELECT * FROM train_day")
+    fun observeTrainDays(): Flow<List<TrainDayEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertTrainDay(e: TrainDayEntity)
+
+    @Query("DELETE FROM train_day WHERE epochDay = :epochDay")
+    suspend fun deleteTrainDay(epochDay: Long)
 }
 
 @Database(
     entities = [
         SleepEntity::class, SkippedNightEntity::class, OrderLogEntity::class, RatingEntity::class,
         FoodEntity::class, FoodLogEntity::class, WeightEntity::class, FuelDayEntity::class,
+        WorkoutEntity::class, SetEntity::class, TrainDayEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class CommanderDb : RoomDatabase() {
@@ -211,7 +299,7 @@ abstract class CommanderDb : RoomDatabase() {
     companion object {
         fun open(context: Context, name: String = "commander.db"): CommanderDb =
             Room.databaseBuilder(context.applicationContext, CommanderDb::class.java, name)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }
@@ -241,3 +329,26 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
     }
 }
+
+/** Version 3 adds Train's tables. */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `workout` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`epochDay` INTEGER NOT NULL, `kind` TEXT NOT NULL, `label` TEXT NOT NULL, `startMs` INTEGER NOT NULL, " +
+                "`endMs` INTEGER, `minutes` REAL NOT NULL, `distanceKm` REAL, `rpe` REAL, `notes` TEXT NOT NULL, " +
+                "`brick` INTEGER NOT NULL)",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `set_log` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "`workoutId` INTEGER NOT NULL, `epochDay` INTEGER NOT NULL, `exercise` TEXT NOT NULL, " +
+                "`setIndex` INTEGER NOT NULL, `weightKg` REAL NOT NULL, `reps` INTEGER NOT NULL, `rir` INTEGER, " +
+                "`atMs` INTEGER NOT NULL)",
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `train_day` (`epochDay` INTEGER NOT NULL, `standDown` TEXT NOT NULL, " +
+                "PRIMARY KEY(`epochDay`))",
+        )
+    }
+}
+

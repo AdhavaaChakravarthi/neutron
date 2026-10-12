@@ -10,9 +10,10 @@ import random
 import sys
 from pathlib import Path
 
-from commander_model import (KCAL_PER_KG, MAX_STEP_KCAL, Episode, FuelProfile, TpmParams, detect_rest_period,
-                              estimate_need, fuel_check_ins, kss_from_alertness, losing_too_fast,
-                              personal_acrophase, resting_energy, simulate, sleep_debt, targets_on, trend_series)
+from commander_model import (KCAL_PER_KG, MAX_STEP_KCAL, PLAN_GROWTH, Episode, FuelProfile, Prescription, TpmParams,
+                              detect_rest_period, e1rm, easy_share, estimate_need, fuel_check_ins, kss_from_alertness,
+                              losing_too_fast, next_load, personal_acrophase, plan_base, resting_energy, simulate,
+                              sleep_debt, targets_on, trend_series, week_plan, week_sessions)
 
 PRM = TpmParams()
 failures: list[str] = []
@@ -210,6 +211,53 @@ check("Losing faster than 1%/week is flagged", losing_too_fast(crash[-1]),
       f"eating ~1300 kcal under target: {crash[-1].weekly_rate * 100:.2f}%/wk")
 check("Normal loss is not flagged", not any(losing_too_fast(c) for c in over),
       f"goal -0.5%/wk: fastest observed {min(c.weekly_rate for c in over if c.weekly_rate is not None) * 100:.2f}%/wk")
+
+# --- Train (MODEL.md section 11) --------------------------------------------
+check("Epley estimated 1RM", abs(e1rm(100, 10) - 133.333333) < 1e-5 and e1rm(100, 1) == 100 and e1rm(100, 13) is None,
+      "100 kg x 10 -> 133.3 kg; a single is its own 1RM; no estimate above 12 reps")
+squat = Prescription(3, 6, 8, True, "barbell")
+good, short = [(100.0, 9)] * 3, [(100.0, 5), (100.0, 4), (100.0, 6)]
+check("Weight goes up only after two sessions at target+1",
+      next_load(squat, [good]) == ("hold", 100.0) and next_load(squat, [good, good]) == ("up", 105.0)
+      and next_load(squat, [good, [(100.0, 9), (100.0, 9), (100.0, 8)]]) == ("hold", 100.0),
+      "squat 3 x 6-8 at 100 kg: 9,9,9 twice -> 105 kg; once, or one set at 8 -> stay")
+check("Increases round up to the next plate", next_load(Prescription(2, 8, 10, False, "dumbbell"), [[(20.0, 11)] * 2] * 2) == ("up", 22.0),
+      "20 kg dumbbell +2.5% = 20.5 -> 22 kg (2 kg steps)")
+check("Weight drops after two sessions mostly below range", next_load(squat, [short, short]) == ("down", 90.0)
+      and next_load(squat, [good, short]) == ("hold", 100.0), "most sets under 6 twice -> 90 kg; once -> stay")
+check("Bodyweight lifts progress by reps", next_load(Prescription(3, 6, 8, False, "body"), [[(0.0, 9)] * 3] * 2) == ("hold", 0.0),
+      "pull-ups at 9,9,9 twice: weight stays, reps keep climbing")
+
+rng_t = random.Random(41)
+worst_growth, recovery_ok, taper_ok, sums_ok = 0.0, True, True, True
+for _ in range(200):
+    v0 = rng_t.uniform(120, 600)
+    vp = v0 * rng_t.uniform(1.0, 2.5)
+    race = rng_t.choice([None, rng_t.randint(3, 40)])
+    weeks = [week_plan(i, v0, vp, race, {}) for i in range(0, 45)]
+    for a, b in zip(weeks, weeks[1:]):
+        if b.phase in ("BASE", "BUILD") and not b.recovery and not a.recovery and a.phase in ("BASE", "BUILD"):
+            worst_growth = max(worst_growth, b.minutes / a.minutes - 1.0)
+        if b.recovery and b.phase in ("BASE", "BUILD") and a.phase in ("BASE", "BUILD"):
+            recovery_ok = recovery_ok and b.minutes < a.minutes
+    if race is not None:
+        pre = plan_base(race - 2, v0, vp)
+        for w in weeks:
+            if w.phase == "TAPER":
+                cut = 1.0 - w.minutes / pre
+                taper_ok = taper_ok and 0.41 <= cut <= 0.60
+    for w in weeks:
+        if w.minutes >= 200:
+            total = sum(m for _, _, m, _ in week_sessions(w))
+            sums_ok = sums_ok and abs(total - w.minutes) <= 0.1 * w.minutes
+check("Weekly plan grows at most 8%", worst_growth <= PLAN_GROWTH - 1.0 + 1e-9, f"largest week-on-week rise {worst_growth * 100:.1f}% in 200 random plans")
+check("Recovery weeks are lighter", recovery_ok, "every fourth week below the week before it")
+check("Taper cuts volume 41-60%", taper_ok, "both taper weeks against the last pre-taper base (Bosquet 2007)")
+missed = week_plan(4, 300, 480, None, {1: 0.0, 2: 0.0, 3: 0.0})
+check("A missed stretch restarts gently", missed.capped and abs(missed.minutes - 150) < 1e-9,
+      f"three weeks off -> next week {missed.minutes:.0f} min (half of the usual 300), not the planned {week_plan(4, 300, 480, None, {}).minutes:.0f}")
+check("Sessions add up to the week", sums_ok, "within 10% after rounding to 5 min and the 15-min minimum")
+check("Easy share counts sessions rated 4 or below", easy_share([2, 3, 4, 6, 3]) == 0.8 and easy_share([]) is None, "4 of 5 -> 80%")
 
 # --- Figure -----------------------------------------------------------------
 if "--plot" in sys.argv:

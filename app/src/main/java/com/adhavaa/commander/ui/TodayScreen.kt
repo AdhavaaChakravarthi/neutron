@@ -64,6 +64,8 @@ import com.adhavaa.commander.orders.kssLabel
 import com.adhavaa.commander.orders.formatHours
 import com.adhavaa.commander.orders.fuelBrief
 import com.adhavaa.commander.orders.fuelOrders
+import com.adhavaa.commander.orders.trainOrders
+import com.adhavaa.commander.train.dayLine
 import com.adhavaa.commander.orders.nextOrder
 import com.adhavaa.commander.orders.phase
 import com.adhavaa.commander.orders.shortName
@@ -80,6 +82,7 @@ data class TodayActions(
     val onRate: (Int) -> Unit = {},
     val onLogWeight: (Double) -> Unit = {},
     val onOpenFuel: () -> Unit = {},
+    val onOpenTrain: () -> Unit = {},
 )
 
 @Composable
@@ -87,7 +90,7 @@ fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable
     val fmt = rememberTimeFormatter()
     val orders = state.orders
     val now = state.now
-    val list = (buildOrders(orders, fmt) + fuelOrders(state.fuel, orders, fmt))
+    val list = (buildOrders(orders, fmt) + fuelOrders(state.fuel, orders, fmt) + trainOrders(state.train, orders, fmt))
         .sortedWith(compareBy<Order> { it.at }.thenBy { it.kind.ordinal })
     val next = nextOrder(list, now)
     val insets = WindowInsets.safeDrawing.asPaddingValues()
@@ -118,7 +121,13 @@ fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable
         item { banner() }
         item { TelemetryStrip(orders, next, now, fmt) }
         item { MissionPanel(state, list, next, fmt, actions.onRate) }
-        item { BriefPanel(orders, now, fmt, fuelBrief(state.fuel, state.eaten)) }
+        item {
+            BriefPanel(
+                orders, now, fmt,
+                listOfNotNull(fuelBrief(state.fuel, state.eaten), state.train?.takeIf { it.setUp }?.let { "Train: ${dayLine(it.day)}." })
+                    .joinToString("\n").ifBlank { null },
+            )
+        }
         item {
             HudPanel(
                 title = "Day radar",
@@ -334,7 +343,13 @@ private fun TimelinePanel(
     actions: TodayActions,
     onWeigh: () -> Unit,
 ) {
-    val done = if (state.fuel?.weightOnDate != null) state.done + OrderKind.WEIGH_IN else state.done
+    val t = state.train
+    val auto = buildSet {
+        if (state.fuel?.weightOnDate != null) add(OrderKind.WEIGH_IN)
+        if (t != null && !t.day.rest && t.dayComplete(t.day)) add(OrderKind.TRAIN)
+        if (t != null && t.mobilityDone(t.today)) add(OrderKind.MOBILITY)
+    }
+    val done = state.done + auto
     HudPanel(
         title = "Mission timeline",
         subtitle = "Tap an order for the reason",
@@ -353,6 +368,7 @@ private fun TimelinePanel(
                     onSetAlarm = actions.onSetAlarm,
                     onWeigh = onWeigh,
                     onOpenFuel = actions.onOpenFuel,
+                    onOpenTrain = actions.onOpenTrain,
                 )
             }
         }
@@ -371,6 +387,7 @@ private fun TimelineRow(
     onSetAlarm: (LocalDateTime) -> Unit,
     onWeigh: () -> Unit = {},
     onOpenFuel: () -> Unit = {},
+    onOpenTrain: () -> Unit = {},
 ) {
     var open by rememberSaveable(order.kind) { mutableStateOf(false) }
     val past = order.at.isBefore(now) && (order.until?.isBefore(now) ?: true)
@@ -433,6 +450,10 @@ private fun TimelineRow(
             if (order.kind == OrderKind.EAT_TO_TARGET) {
                 Spacer(Modifier.height(2.dp))
                 RowAction("OPEN FUEL", onOpenFuel)
+            }
+            if ((order.kind == OrderKind.TRAIN || order.kind == OrderKind.MOBILITY) && !done) {
+                Spacer(Modifier.height(2.dp))
+                RowAction("OPEN TRAIN", onOpenTrain)
             }
         }
         Column(Modifier.padding(vertical = 4.dp)) {

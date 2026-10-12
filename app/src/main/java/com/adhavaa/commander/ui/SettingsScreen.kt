@@ -55,11 +55,12 @@ private val RULES = listOf(
     "Bedtime aims for your full sleep need. Food targets never go below your resting energy, and weight loss is " +
         "capped at 1% of body weight a week.",
     "Your schedule moves at most 30 minutes a day, so changes stay gradual. (The 30 minutes is a cautious " +
-        "choice, not a measured limit.)",
+        "choice, not a measured limit.) Training volume builds 8% a week at most, with lighter weeks.",
     "Estimates are labelled as estimates.",
     "You report back and Commander adjusts. When its prediction doesn't match how you feel, the plan " +
         "changes, not you. (Morning check-ins arrive in a later update.)",
     "No guilt mechanics. A skipped order is just a skipped order.",
+    "Pain, illness or exhaustion means stand down. Never train through pain.",
     "Wellness, not medicine. If you follow orders and still feel exhausted for weeks, see a doctor.",
 )
 
@@ -88,6 +89,19 @@ private val SOURCES = listOf(
     "Institute of Medicine. Dietary Reference Intakes for energy and macronutrients. 2005.",
     "Burke LM, Hawley JA, Wong SHS, Jeukendrup AE. Carbohydrates for training and competition. J Sports Sci 2011.",
     "USDA ARS. National Nutrient Database for Standard Reference, Legacy (food data).",
+    "Ratamess NA, et al. ACSM position stand: Progression models in resistance training for healthy adults. " +
+        "Med Sci Sports Exerc 2009.",
+    "Currier BS, et al. ACSM position stand: Resistance training prescription for muscle function, hypertrophy, and " +
+        "physical performance in healthy adults. Med Sci Sports Exerc 2026.",
+    "Zourdos MC, et al. Resistance training-specific RPE scale measuring repetitions in reserve. J Strength Cond Res 2016.",
+    "Foster C, et al. A new approach to monitoring exercise training (session RPE). J Strength Cond Res 2001.",
+    "Seiler S. Training intensity and duration distribution in endurance athletes. Int J Sports Physiol Perform 2010.",
+    "Bosquet L, et al. Effects of tapering on performance: a meta-analysis. Med Sci Sports Exerc 2007.",
+    "Buist I, et al. No effect of a graded training program on running-related injuries. Am J Sports Med 2008.",
+    "Behm DG, et al. Acute effects of muscle stretching on physical performance. Appl Physiol Nutr Metab 2016.",
+    "Fullagar HHK, et al. Sleep and athletic performance. Sports Med 2015.",
+    "ACSM's Guidelines for Exercise Testing and Prescription, 11th ed. (flexibility).",
+    "free-exercise-db (public domain): exercise names, muscles and instructions.",
 )
 
 @Immutable

@@ -10,8 +10,8 @@ data class Reminder(val kind: OrderKind, val at: LocalDateTime, val title: Strin
 
 /** Orders that can send a reminder, in the order they happen in a day. */
 val REMINDABLE: List<OrderKind> = listOf(
-    OrderKind.WAKE, OrderKind.WEIGH_IN, OrderKind.CHECK_IN, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.MELATONIN,
-    OrderKind.WIND_DOWN, OrderKind.LIGHTS_OUT,
+    OrderKind.WAKE, OrderKind.WEIGH_IN, OrderKind.CHECK_IN, OrderKind.TRAIN, OrderKind.PEAK, OrderKind.CAFFEINE,
+    OrderKind.MELATONIN, OrderKind.MOBILITY, OrderKind.WIND_DOWN, OrderKind.LIGHTS_OUT,
 )
 
 /**
@@ -19,8 +19,8 @@ val REMINDABLE: List<OrderKind> = listOf(
  * fires once Fuel is set up (D-62).
  */
 val DEFAULT_REMINDERS: Set<OrderKind> = setOf(
-    OrderKind.WAKE, OrderKind.WEIGH_IN, OrderKind.CHECK_IN, OrderKind.PEAK, OrderKind.CAFFEINE, OrderKind.WIND_DOWN,
-    OrderKind.LIGHTS_OUT,
+    OrderKind.WAKE, OrderKind.WEIGH_IN, OrderKind.CHECK_IN, OrderKind.TRAIN, OrderKind.PEAK, OrderKind.CAFFEINE,
+    OrderKind.MOBILITY, OrderKind.WIND_DOWN, OrderKind.LIGHTS_OUT,
 )
 
 /** The caffeine reminder comes early so there is still time for a last cup. ASSUMPTION, DECISIONS.md D-38. */
@@ -35,6 +35,8 @@ fun reminderLabel(kind: OrderKind): String = when (kind) {
     OrderKind.LIGHTS_OUT -> "Lights out"
     OrderKind.CHECK_IN -> "Morning report (confirm last night)"
     OrderKind.WEIGH_IN -> "Weigh in (once Fuel is set up)"
+    OrderKind.TRAIN -> "Today's training (once Train is set up)"
+    OrderKind.MOBILITY -> "Mobility, 45 min before wind-down"
     else -> kind.name.lowercase()
 }
 
@@ -103,6 +105,14 @@ fun upcomingReminders(
                     OrderKind.WEIGH_IN, weighInTime(orders), "Weigh in",
                     "After the toilet, before food or drink. Same scale every morning.",
                 )
+            }
+            if (settings.train.setUp && !date.isBefore(settings.train.start!!)) {
+                if (OrderKind.TRAIN in settings.reminders) {
+                    list += Reminder(OrderKind.TRAIN, orders.groggyUntil, "Today's training", trainReminderText(settings.train, date))
+                }
+                if (OrderKind.MOBILITY in settings.reminders && mobilityTime(orders).isAfter(orders.groggyUntil)) {
+                    list += Reminder(OrderKind.MOBILITY, mobilityTime(orders), "Mobility", "Recovery stretch, about 8 minutes. Mild tightness, never pain.")
+                }
             }
             if (OrderKind.CHECK_IN in settings.reminders && !data.nightRecorded(date)) {
                 list += Reminder(

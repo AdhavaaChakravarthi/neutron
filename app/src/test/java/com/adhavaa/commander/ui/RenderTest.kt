@@ -17,6 +17,26 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import com.adhavaa.commander.FuelUi
 import com.adhavaa.commander.FuelViewModel
+import com.adhavaa.commander.Rest
+import com.adhavaa.commander.TrainUi
+import com.adhavaa.commander.TrainViewModel
+import com.adhavaa.commander.data.TrainSettings
+import com.adhavaa.commander.model.Intensity
+import com.adhavaa.commander.model.weekPlan
+import com.adhavaa.commander.model.weekSessions
+import com.adhavaa.commander.train.Exercise
+import com.adhavaa.commander.train.PROGRAM
+import com.adhavaa.commander.train.RECOVERY_STRETCH
+import com.adhavaa.commander.train.SetRecord
+import com.adhavaa.commander.train.TrainData
+import com.adhavaa.commander.train.Workout
+import com.adhavaa.commander.train.WorkoutKind
+import com.adhavaa.commander.train.equipmentOf
+import com.adhavaa.commander.train.liftDayFor
+import com.adhavaa.commander.train.liftTargets
+import com.adhavaa.commander.train.readExercises
+import com.adhavaa.commander.train.trainPicture
+import com.adhavaa.commander.train.weekIndex
 import com.adhavaa.commander.MorningReport
 import com.adhavaa.commander.UiState
 import com.adhavaa.commander.data.FuelSettings
@@ -346,6 +366,134 @@ class RenderTest {
         val colours = HashSet<Int>()
         for (y in 0 until bitmap.height step 7) for (x in 0 until bitmap.width step 7) colours += bitmap.getPixel(x, y)
         assertTrue("live Fuel tab rendered blank (${colours.size} colours)", colours.size > 20)
+    }
+
+    // --- Train --------------------------------------------------------------------------------
+
+    private val trainSettings = TrainSettings(
+        start = LocalDate.of(2026, 9, 21), raceDate = LocalDate.of(2027, 3, 21), currentMinutes = 300.0, peakMinutes = 480.0,
+    )
+    private val thursday = LocalDate.of(2026, 10, 15)
+
+    private fun exercises(): Map<String, Exercise> {
+        val file = listOf(File("src/main/assets/exercises.tsv"), File("app/src/main/assets/exercises.tsv")).first { it.exists() }
+        return file.inputStream().use { readExercises(it) }.associateBy { it.id }
+    }
+
+    private val startWeights = mapOf(
+        "Barbell_Squat" to 80.0, "Romanian_Deadlift" to 70.0, "Lying_Leg_Curls" to 35.0, "Standing_Calf_Raises" to 60.0,
+        "Barbell_Bench_Press_-_Medium_Grip" to 60.0, "Bent_Over_Barbell_Row" to 55.0, "Dumbbell_Shoulder_Press" to 18.0,
+        "Wide-Grip_Lat_Pulldown" to 50.0, "Triceps_Pushdown" to 25.0, "Barbell_Curl" to 25.0, "Barbell_Deadlift" to 100.0,
+        "Split_Squat_with_Dumbbells" to 16.0, "Leg_Extensions" to 40.0, "Seated_Calf_Raise" to 40.0, "Incline_Dumbbell_Press" to 20.0,
+        "Seated_Cable_Rows" to 50.0, "Side_Lateral_Raise" to 8.0, "Face_Pull" to 20.0, "Hammer_Curls" to 12.0,
+    )
+
+    /** Three and a half weeks of following the plan: every lift at target+1 reps, every session logged. */
+    private fun trainData(today: LocalDate, openLift: Boolean = false): TrainData {
+        val workouts = ArrayList<Workout>()
+        val sets = ArrayList<SetRecord>()
+        var id = 1L
+        var d = trainSettings.start!!
+        while (d.isBefore(today) || (openLift && d == today)) {
+            val week = weekPlan(weekIndex(trainSettings.start!!, d), 300.0, 480.0, weekIndex(trainSettings.start!!, trainSettings.raceDate!!), emptyMap())
+            liftDayFor(d.dayOfWeek.value)?.let { lift ->
+                val wid = id++
+                val ended = d != today
+                workouts += Workout(wid, d, WorkoutKind.LIFT, lift.label, ended, if (ended) 62.0 else 0.0, null, if (ended) 7.0 else null, "", false, startMs = wid)
+                val items = if (ended) lift.items else lift.items.take(2)
+                for (item in items) {
+                    val w = startWeights[item.exerciseId] ?: 0.0
+                    val n = if (ended) item.sets else if (item == items.first()) item.sets else 1
+                    repeat(n) { k -> sets += SetRecord(id++, wid, d, item.exerciseId, k, w, item.hi + 1, 2) }
+                }
+            }
+            if (d != today) {
+                for (s in weekSessions(week).filter { it.day == d.dayOfWeek.value }) {
+                    workouts += Workout(
+                        id++, d, WorkoutKind.of(s.sport), if (s.brick) "Brick run" else s.sport.label, true, s.minutes - 5, null,
+                        if (s.intensity == Intensity.QUALITY) 6.0 else 3.0, "", s.brick, startMs = id,
+                    )
+                }
+                if (d.dayOfWeek.value in listOf(1, 3, 5)) workouts += Workout(id++, d, WorkoutKind.MOBILITY, "Recovery stretch", true, 8.0, null, null, "", false)
+            }
+            d = d.plusDays(1)
+        }
+        return TrainData(trainSettings, workouts, sets, emptyMap())
+    }
+
+    private fun trainUi(today: LocalDate, debtH: Double? = 1.5, openLift: Boolean = false, s: TrainSettings = trainSettings): TrainUi {
+        val ex = exercises()
+        val d = if (s.setUp) trainData(today, openLift) else TrainData(s, emptyList(), emptyList(), emptyMap())
+        return TrainUi(
+            s, trainPicture(d, today, today, debtH) { ex[it] }, d.workouts, d.sets, ex, debtH,
+            PROGRAM.associate { day -> day.key to liftTargets(d, day, today) { id -> equipmentOf(ex[id]?.equipment ?: "") } },
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h4600dp-xhdpi")
+    fun trainTab() = render("19-train") {
+        TrainScreen(trainUi(thursday), TrainActions())
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h1500dp-xhdpi")
+    fun trainNotSetUp() = render("20-train-setup-prompt") {
+        TrainScreen(trainUi(thursday, s = TrainSettings()), TrainActions())
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h2600dp-xhdpi")
+    fun liftLogger() = render("21-lift") {
+        val ui = trainUi(thursday, openLift = true)
+        val w = ui.workouts.last { it.kind == WorkoutKind.LIFT }
+        val start = 1_760_000_000_000L
+        LiftScreen(ui, PROGRAM[2], w.id, start, Rest(start + 27 * 60_000L + 95_000L, 150, "Barbell Deadlift set 2"), LiftActions(), now = { start + 27 * 60_000L })
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h1500dp-xhdpi")
+    fun mobilityPlayer() = render("22-mobility") {
+        MobilityPlayer(RECOVERY_STRETCH, exercises(), onDone = {}, onBack = {}, autoStart = false)
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h1500dp-xhdpi")
+    fun trainSetup() = render("23-train-setup") {
+        TrainSetupScreen(TrainSettings(raceDate = LocalDate.of(2027, 3, 21)), day, {}, {})
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h3400dp-xhdpi")
+    fun todayWithTrain() = render("24-today-train") {
+        val base = ready(thursday.atTime(7, 20), history())
+        TodayScreen(base.copy(train = trainUi(thursday, debtH = 6.0).picture), TodayActions())
+    }
+
+    /** The real Train tab with its ViewModel, database and packaged exercise list. */
+    @Test
+    @Config(qualifiers = "w393dp-h1700dp-xhdpi")
+    fun trainTabLive() {
+        val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
+        activity.setContent { CommanderTheme { TrainRoute(onOpenSettings = {}, onFullScreen = {}) } }
+        val vm = ViewModelProvider(activity)[TrainViewModel::class.java]
+        var waited = 0
+        while (vm.state.value == null && waited < 100) {
+            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+            Thread.sleep(30)
+            waited++
+        }
+        val state = vm.state.value
+        assertTrue("Train state never loaded", state != null)
+        assertTrue("exercise list: ${vm.catalogError()}", state!!.exercises.size == 876)
+        repeat(5) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
+        val view = activity.window.decorView
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
+        FileOutputStream(File(outDir, "25-train-live.png")).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val colours = HashSet<Int>()
+        for (y in 0 until bitmap.height step 7) for (x in 0 until bitmap.width step 7) colours += bitmap.getPixel(x, y)
+        assertTrue("live Train tab rendered blank (${colours.size} colours)", colours.size > 20)
     }
 }
 
