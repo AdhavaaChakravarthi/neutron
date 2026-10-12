@@ -19,7 +19,7 @@ Following every order for 7 months only works if no order can hurt you and every
 
 | Module | Status |
 |---|---|
-| Sleep and energy | v1, below. First app build is out (Phase 2): orders from your usual schedule |
+| Sleep and energy | v1, below. Builds are out: orders from your usual schedule, with reminders |
 | Training | Planned. Spec with sourced rules before any code |
 | Nutrition | Planned. Same |
 | Mobility | Planned. Same |
@@ -54,9 +54,20 @@ The order of the later modules is open; ARCHITECTURE.md lists the phases.
 
 ### Today (home)
 
-- **Right now:** one line, e.g. "Sharpest until 7:20 pm. Do the hard thing."
-- **Energy curve** from waking to lights out with a "now" marker, shaded zones (groggy, sharpest, wind down) and the sleepiness line.
-- **Today's orders,** in time order, each with its reason on tap: Up and get light; Groggy; Sharpest (estimate); Last caffeine; Melatonin rising (estimate); Wind down; Lights out; Up (tomorrow). Past orders dim.
+Dark tactical HUD (D-37), top to bottom:
+
+- **Top bar:** mark, COMMANDER, campaign day ("DAY 002 / 212"), clock, settings.
+- **Silent banner** (amber) when notifications are off, with an Allow button.
+- **Telemetry strip:** next order and countdown, lights out, sleep need, tomorrow's wake.
+- **Mission panel** over contour lines: current phase, the "right now" line, next order, lights out, need, debt.
+- **Mission brief** (the mint panel, read this first): what's left of today in two or three sentences, over a wireframe of today's curve.
+- **Day radar:** a 24-hour dial with sleep, groggy, sharpest and wind-down bands, order blips and a sweep at now.
+- **Energy telemetry:** the curve with groggy (hatched), sharpest (green) and wind-down (amber) zones and the sleepiness line.
+- **Mission timeline:** every order with time, type (order / info / estimate), reason on tap, a reminder toggle for each order that can notify, and "Set alarm" on tomorrow's wake.
+
+### Reminders
+
+Notifications on one "Orders" channel, at the exact minute: up (with the light window), sharpest window opens, last caffeine (30 min warning), wind down, lights out; melatonin optional. Toggle per order on Today or in Settings; Settings can send a test order. Alarms are rebuilt on every settings change, every fired order, reboot, clock or time-zone change and app update. Orders more than 20 min late are skipped.
 - **Sleep debt** in hours with its band (low / moderate / high) and a 14-night sparkline.
 - **Next nudge** with its time.
 - A text summary of the curve for TalkBack, e.g. "Groggy until 8:40 am. Peak 3:50 to 5:20 pm. Sleepy after 10:45 pm."

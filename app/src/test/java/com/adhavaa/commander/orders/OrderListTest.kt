@@ -77,6 +77,18 @@ class OrderListTest {
     }
 
     @Test
+    fun briefCoversWhatIsLeftOfTheDay() {
+        fun at(h: Int, m: Int = 0) = LocalDateTime.of(2026, 10, 12, h, m)
+        val morning = brief(steady, at(8), fmt)
+        assertTrue(morning, morning.contains("Ease in until 08:39") && morning.contains("12:35–19:20") && morning.contains("15:15"))
+        val afternoon = brief(steady, at(16), fmt)
+        assertTrue(afternoon, afternoon.startsWith("Hardest work now, until 19:20.") && afternoon.contains("No more caffeine"))
+        assertTrue(brief(steady, at(22, 30), fmt).contains("Lights out at 23:15"))
+        assertEquals("Lights out now. You're up at 07:30.", brief(steady, at(23, 30), fmt))
+        assertEquals("Sleep. You're up at 07:30.", brief(steady, at(6), fmt))
+    }
+
+    @Test
     fun hoursFormat() {
         assertEquals("8 h", formatHours(8.0))
         assertEquals("7 h 45 min", formatHours(7.75))

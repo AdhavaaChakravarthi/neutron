@@ -2,7 +2,7 @@
 
 A personal Android app that gives you orders for your day: when to wake, when you'll be sharpest, when to stop caffeine, when to wind down and when to sleep. Built on published sleep research; every number is sourced in [MODEL.md](MODEL.md). Training, nutrition, mobility and a gut log come later, one module at a time.
 
-**Status:** Phase 2 done: the first installable build gives today's orders from your usual schedule. Real-night detection is Phase 3.
+**Status:** orders from your usual schedule, with reminders at the right minute and a tactical HUD. Real-night detection is next (Phase 3).
 
 **Install:** open the latest release on your phone (Releases, right side of the repo page), download the `.apk`, open it and allow the install. Each new release installs over the last one.
 
@@ -27,3 +27,5 @@ Build the app (needs JDK 17 and the Android SDK):
 ```
 
 Commander is a wellness tool, not a medical device.
+
+Bundles JetBrains Mono under the SIL Open Font License 1.1 (`third_party/JetBrainsMono-OFL.txt`).

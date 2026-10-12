@@ -116,6 +116,25 @@ fun statusLine(o: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) -> Strin
     else -> "Lights out. Up at ${fmt(o.nextWake)}."
 }
 
+/** The mission brief: what's left of today in two or three plain sentences. */
+fun brief(o: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) -> String): String {
+    if (now.isBefore(o.wake)) return "Sleep. You're up at ${fmt(o.wake)}."
+    if (!now.isBefore(o.lightsOut)) return "Lights out now. You're up at ${fmt(o.nextWake)}."
+    val parts = mutableListOf<String>()
+    if (now.isBefore(o.groggyUntil)) parts += "Ease in until ${fmt(o.groggyUntil)} and get outside light before ${fmt(o.lightUntil)}."
+    when {
+        now.isBefore(o.peakStart) -> parts += "Save your hardest work for ${fmt(o.peakStart)}–${fmt(o.peakEnd)}."
+        !now.isAfter(o.peakEnd) -> parts += "Hardest work now, until ${fmt(o.peakEnd)}."
+    }
+    parts += if (now.isBefore(o.caffeineCutoff)) "Last caffeine by ${fmt(o.caffeineCutoff)}." else "No more caffeine today."
+    parts += if (now.isBefore(o.windDown)) {
+        "Wind down at ${fmt(o.windDown)}, lights out at ${fmt(o.lightsOut)}."
+    } else {
+        "Lights dim, screens away. Lights out at ${fmt(o.lightsOut)}."
+    }
+    return parts.joinToString(" ")
+}
+
 /** Plain-language summary of the day for TalkBack. */
 fun daySummary(o: TodayOrders, fmt: (LocalDateTime) -> String): String =
     "Energy curve for today. Groggy until ${fmt(o.groggyUntil)}. " +

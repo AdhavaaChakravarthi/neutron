@@ -1,15 +1,18 @@
 package com.adhavaa.commander.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -28,18 +31,21 @@ fun TimeRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .background(Hud.panelHi)
+            .border(1.dp, Hud.line, RoundedCornerShape(6.dp))
             .clickable(onClickLabel = "Change $label", role = Role.Button) {
                 showTimePicker(context, value ?: initial, onPicked)
             }
-            .padding(vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+        Text(label, style = HudType.body, color = Hud.ink, modifier = Modifier.weight(1f))
         Text(
             value?.let { formatTime(context, it) } ?: placeholder,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary,
+            style = HudType.bigValue,
+            color = if (value != null) Hud.green else Hud.muted,
         )
     }
 }

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Notification icon: the three rank chevrons, white on transparent as Android requires. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5,9 L12,3 L19,9 L19,12.5 L12,6.5 L5,12.5 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5,15 L12,9 L19,15 L19,18.5 L12,12.5 L5,18.5 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5,21 L12,15 L19,21 L19,22 L5,22 Z" />
+</vector>

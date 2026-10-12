@@ -45,3 +45,11 @@ None right now. The next module spec (see ARCHITECTURE.md phases) will raise its
 | D-33 | DST days treated as normal 24 h wall-clock days until Phase 6 | Claude | Error is at most 1 h on two days a year |
 | D-34 | Lint's Play Store target-SDK checks disabled | Claude | They don't apply to a sideloaded app |
 | D-35 | Rules of command (SPEC.md) are product rules every module must follow | Claude | Following every order for 7 months only works if no order can hurt you |
+| D-36 | Reminders use exact alarms via `USE_EXACT_ALARM` (granted at install), falling back to inexact if unavailable | Claude | Orders like lights out need the right minute; Play's restriction of this permission to alarm apps doesn't apply to a sideloaded app |
+| D-37 | Dark-only tactical HUD look, after the reference image you chose; JetBrains Mono (SIL OFL, bundled with its license) for labels and numbers, system sans for sentences | You (reference) + Claude (details) | A dark screen also suits evening use |
+| D-38 | Reminders on by default: up, sharpest window, last caffeine, wind down, lights out. Melatonin off (an estimate with no action of its own). Caffeine warning 30 min before the cutoff. Each can be toggled on Today or in Settings | Claude | Few enough a day that they stay worth reading |
+| D-39 | Orders more than 20 min late (phone was off) are skipped, not shown | Claude | An old "wind down" at 2 a.m. would be noise |
+| D-40 | Campaign = 7 calendar months from the start date (onboarding day, or first run of this version), editable in Settings | Claude | D-01 |
+| D-41 | Commander is not an alarm clock: tomorrow's wake order has a "Set alarm" button that opens the clock app pre-filled | Claude | The clock app is more reliable for waking than a notification |
+| D-42 | Reminders (planned for Phase 5) pulled forward ahead of Phase 3 at your request | You | — |
+

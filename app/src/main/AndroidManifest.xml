@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- No INTERNET permission, on purpose: nothing leaves this phone. CI fails the build if one appears. -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Orders arrive as notifications. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Orders fire at their exact minute. Granted at install; Play's alarm-app restriction doesn't apply to a
+         sideloaded personal app (DECISIONS.md D-36). -->
+    <uses-permission
+        android:name="android.permission.USE_EXACT_ALARM"
+        tools:ignore="ExactAlarm" />
+    <!-- Alarms are cleared on reboot; rebuild them. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- "Set alarm" opens the clock app with tomorrow's wake time filled in. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
     <application
         android:allowBackup="false"
@@ -12,12 +25,28 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".notify.OrderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notify.RescheduleReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

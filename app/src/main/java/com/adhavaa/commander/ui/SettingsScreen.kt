@@ -1,31 +1,46 @@
 package com.adhavaa.commander.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.adhavaa.commander.BuildConfig
 import com.adhavaa.commander.UiState
 import com.adhavaa.commander.data.Settings
 import com.adhavaa.commander.data.isReasonableNight
+import com.adhavaa.commander.orders.OrderKind
+import com.adhavaa.commander.orders.REMINDABLE
 import com.adhavaa.commander.orders.formatHours
+import com.adhavaa.commander.orders.reminderLabel
+import java.time.LocalDate
 import java.time.LocalTime
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 private val RULES = listOf(
     "Every order comes from published sleep research and tells you why.",
@@ -35,6 +50,7 @@ private val RULES = listOf(
     "Estimates are labelled as estimates.",
     "You report back and Commander adjusts. When its prediction doesn't match how you feel, the plan " +
         "changes, not you. (Morning check-ins arrive in a later update.)",
+    "No guilt mechanics. A skipped order is just a skipped order.",
     "Wellness, not medicine. If you follow orders and still feel exhausted for weeks, see a doctor.",
 )
 
@@ -53,119 +69,158 @@ private val SOURCES = listOf(
     "Khalsa SBS, et al. A phase response curve to single bright light pulses in human subjects. J Physiol 2003.",
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Immutable
+data class SettingsActions(
+    val onBack: () -> Unit = {},
+    val onSchedule: (LocalTime, LocalTime) -> Unit = { _, _ -> },
+    val onTargetWake: (LocalTime?) -> Unit = {},
+    val onNeed: (Int) -> Unit = {},
+    val onReminder: (OrderKind, Boolean) -> Unit = { _, _ -> },
+    val onTestOrder: () -> Unit = {},
+    val onCampaignStart: (LocalDate) -> Unit = {},
+    val onEnableNotifications: () -> Unit = {},
+)
+
 @Composable
-fun SettingsScreen(
-    state: UiState.Ready,
-    onBack: () -> Unit,
-    onSchedule: (LocalTime, LocalTime) -> Unit,
-    onTargetWake: (LocalTime?) -> Unit,
-    onNeed: (Int) -> Unit,
-) {
+fun SettingsScreen(state: UiState.Ready, actions: SettingsActions, notificationsAllowed: Boolean) {
     val s = state.settings
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
-            )
-        },
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 16.dp, end = 16.dp,
-                top = padding.calculateTopPadding() + 8.dp,
-                bottom = padding.calculateBottomPadding() + 32.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            item { Section("Your usual night") }
-            item {
-                Column {
-                    TimeRow("Usually fall asleep", s.bedtime) { if (isReasonableNight(it, s.wake)) onSchedule(it, s.wake) }
-                    TimeRow("Usually wake up", s.wake) { if (isReasonableNight(s.bedtime, it)) onSchedule(s.bedtime, it) }
-                    Hint("Commander plans from these until it can see your real nights. A change that makes the night shorter than 3 h or longer than 14 h is ignored.")
-                }
-            }
-            item { Section("Where you're heading") }
-            item {
-                Column {
-                    TimeRow("Target wake time", s.targetWake, placeholder = "Same as usual", initial = s.wake) { onTargetWake(it) }
-                    if (s.targetWake != null) {
-                        TextButton(onClick = { onTargetWake(null) }) { Text("Clear target") }
-                    }
-                    Hint(
-                        "Set an earlier target and Commander moves you there 30 minutes a day. If you have to be " +
-                            "up at a fixed time (class, work), make that your usual wake time instead.",
-                    )
-                }
-            }
-            item { Section("Sleep need") }
-            item { NeedStepper(s.needMinutes, onNeed) }
-            item {
-                Hint(
-                    "Starts at 8 h. Adults need 7 h or more (AASM/SRS consensus); in one study young men given " +
-                        "12 h in bed for 9 nights settled at about 8.4 h. Commander will learn yours from nights you " +
-                        "wake without an alarm.",
-                )
-            }
-            item { Section("Rules of command") }
-            items(RULES.size) { i -> Bullet(RULES[i]) }
-            item { Section("Why these orders") }
-            items(SOURCES.size) { i -> Bullet(SOURCES[i], small = true) }
-            item { Hint("Full references, equations and every assumption are in MODEL.md in the project repo.") }
-            item {
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                Hint("Commander ${BuildConfig.VERSION_NAME}. A wellness tool, not a medical device. No data leaves this phone.")
-            }
-        }
-    }
-}
+    val context = LocalContext.current
+    val insets = WindowInsets.safeDrawing.asPaddingValues()
+    val dateFmt = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
 
-@Composable
-private fun NeedStepper(minutes: Int, onNeed: (Int) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Hud.bg),
+        contentPadding = PaddingValues(
+            start = 14.dp, end = 14.dp,
+            top = insets.calculateTopPadding() + 8.dp,
+            bottom = insets.calculateBottomPadding() + 32.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        OutlinedButton(
-            onClick = { onNeed(minutes - 15) },
-            enabled = minutes > Settings.MIN_NEED_MIN,
-        ) { Text("− 15 min") }
-        Text(formatHours(minutes / 60.0), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.primary)
-        OutlinedButton(
-            onClick = { onNeed(minutes + 15) },
-            enabled = minutes < Settings.MAX_NEED_MIN,
-        ) { Text("+ 15 min") }
-    }
-}
-
-@Composable
-private fun Section(title: String) {
-    Text(
-        title,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(top = 16.dp),
-    )
-}
-
-@Composable
-private fun Hint(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-@Composable
-private fun Bullet(text: String, small: Boolean = false) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("•", color = MaterialTheme.colorScheme.primary)
-        Column {
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                SquareButton("Back to today", actions.onBack) {
+                    Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = null, tint = Hud.muted, modifier = Modifier.size(18.dp))
+                }
+                Text("SETTINGS", style = HudType.title, color = Hud.ink)
+            }
+        }
+        item {
+            HudPanel(title = "Order alerts", subtitle = "Notifications at the right minute") {
+                if (!notificationsAllowed) {
+                    Text(
+                        "Notifications are off, so orders can't reach you.",
+                        style = HudType.body,
+                        color = Hud.amber,
+                    )
+                    HudButton("Allow notifications", actions.onEnableNotifications)
+                }
+                for (kind in REMINDABLE) {
+                    ReminderSwitch(reminderLabel(kind), kind in s.reminders) { actions.onReminder(kind, it) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(onClick = actions.onTestOrder, enabled = notificationsAllowed) { Text("SEND TEST ORDER") }
+                }
+                Hint("Alerts use exact alarms and survive restarts. Commander isn't an alarm clock: use Set alarm on tomorrow's order for waking up.")
+            }
+        }
+        item {
+            HudPanel(title = "Usual night", subtitle = "Planned from these until real nights are tracked") {
+                TimeRow("Fall asleep", s.bedtime) { if (isReasonableNight(it, s.wake)) actions.onSchedule(it, s.wake) }
+                TimeRow("Wake up", s.wake) { if (isReasonableNight(s.bedtime, it)) actions.onSchedule(s.bedtime, it) }
+                Hint("A change that makes the night shorter than 3 h or longer than 14 h is ignored. If you have to be up at a fixed time (class, work), make that your usual wake time.")
+            }
+        }
+        item {
+            HudPanel(title = "Heading", subtitle = "Target wake time") {
+                TimeRow("Target wake", s.targetWake, placeholder = "Same as usual", initial = s.wake) { actions.onTargetWake(it) }
+                if (s.targetWake != null) TextButton(onClick = { actions.onTargetWake(null) }) { Text("CLEAR TARGET") }
+                Hint("Set an earlier target and Commander moves you there 30 minutes a day.")
+            }
+        }
+        item {
+            HudPanel(title = "Sleep need") {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    OutlinedButton(onClick = { actions.onNeed(s.needMinutes - 15) }, enabled = s.needMinutes > Settings.MIN_NEED_MIN) { Text("− 15") }
+                    Text(formatHours(s.needMinutes / 60.0), style = HudType.headline, color = Hud.green)
+                    OutlinedButton(onClick = { actions.onNeed(s.needMinutes + 15) }, enabled = s.needMinutes < Settings.MAX_NEED_MIN) { Text("+ 15") }
+                }
+                Hint("Starts at 8 h. Adults need 7 h or more (AASM/SRS consensus); in one study young men given 12 h in bed for 9 nights settled at about 8.4 h. Commander will learn yours from nights you wake without an alarm.")
+            }
+        }
+        item {
+            val c = state.campaign
+            HudPanel(title = "Campaign", subtitle = "Seven months of orders") {
+                KeyValue("Started", c?.start?.format(dateFmt) ?: "Today", Hud.green)
+                KeyValue("Ends", c?.end?.format(dateFmt) ?: "—")
+                KeyValue("Day", c?.let { "${minOf(it.day, it.totalDays)} of ${it.totalDays}" } ?: "1", Hud.green)
+                OutlinedButton(onClick = {
+                    showDatePicker(context, c?.start ?: LocalDate.now()) { actions.onCampaignStart(it) }
+                }) { Text("CHANGE START DATE") }
+            }
+        }
+        item {
+            HudPanel(title = "Rules of command") {
+                RULES.forEachIndexed { i, rule -> Numbered(i + 1, rule) }
+            }
+        }
+        item {
+            HudPanel(title = "Why these orders", subtitle = "Sources") {
+                SOURCES.forEach { Text("› $it", style = HudType.small, color = Hud.muted) }
+                Hint("Full references, equations and every assumption are in MODEL.md in the project repo.")
+            }
+        }
+        item {
             Text(
-                text,
-                style = if (small) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                "Commander ${BuildConfig.VERSION_NAME}. A wellness tool, not a medical device. No data leaves this phone.",
+                style = HudType.small,
+                color = Hud.dim,
+                modifier = Modifier.padding(4.dp),
             )
         }
     }
+}
+
+@Composable
+fun HudButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.fillMaxWidth(),
+        colors = ButtonDefaults.buttonColors(containerColor = Hud.green, contentColor = Hud.onMint),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+    ) { Text(text.uppercase()) }
+}
+
+@Composable
+private fun ReminderSwitch(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = HudType.body, color = Hud.ink, modifier = Modifier.weight(1f))
+        Switch(
+            checked = on,
+            onCheckedChange = onChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = Hud.onMint,
+                checkedTrackColor = Hud.green,
+                uncheckedThumbColor = Hud.muted,
+                uncheckedTrackColor = Hud.panelHi,
+                uncheckedBorderColor = Hud.line,
+            ),
+        )
+    }
+}
+
+@Composable
+private fun Numbered(n: Int, text: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(n.toString().padStart(2, '0'), style = HudType.value, color = Hud.green)
+        Column { Text(text, style = HudType.body, color = Hud.ink) }
+    }
+}
+
+@Composable
+fun Hint(text: String) {
+    Text(text, style = HudType.small, color = Hud.muted)
 }

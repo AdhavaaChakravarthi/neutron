@@ -1,112 +1,277 @@
 package com.adhavaa.commander.ui
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.adhavaa.commander.UiState
+import com.adhavaa.commander.model.TodayOrders
 import com.adhavaa.commander.orders.Order
+import com.adhavaa.commander.orders.OrderKind
+import com.adhavaa.commander.orders.REMINDABLE
+import com.adhavaa.commander.orders.brief
 import com.adhavaa.commander.orders.buildOrders
+import com.adhavaa.commander.orders.countdown
+import com.adhavaa.commander.orders.formatHours
+import com.adhavaa.commander.orders.nextOrder
+import com.adhavaa.commander.orders.phase
 import com.adhavaa.commander.orders.statusLine
+import java.time.Duration
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
-import java.time.format.FormatStyle
 
-@OptIn(ExperimentalMaterial3Api::class)
+@Immutable
+data class TodayActions(
+    val onOpenSettings: () -> Unit = {},
+    val onToggleReminder: (OrderKind, Boolean) -> Unit = { _, _ -> },
+    val onSetAlarm: (LocalDateTime) -> Unit = {},
+)
+
 @Composable
-fun TodayScreen(state: UiState.Ready, onOpenSettings: () -> Unit) {
+fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable () -> Unit = {}) {
     val fmt = rememberTimeFormatter()
     val orders = state.orders
+    val now = state.now
     val list = buildOrders(orders, fmt)
-    // The time column is as wide as the widest time in the current font size, so times never wrap.
-    val measurer = rememberTextMeasurer()
-    val timeStyle = MaterialTheme.typography.titleMedium
-    val density = LocalDensity.current
-    val timeWidth = remember(fmt, timeStyle, density) {
-        val widest = measurer.measure(AnnotatedString("–" + fmt(LocalDateTime.of(2026, 1, 1, 12, 55))), style = timeStyle)
-        with(density) { widest.size.width.toDp() } + 16.dp
-    }
+    val next = nextOrder(list, now)
+    val insets = WindowInsets.safeDrawing.asPaddingValues()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Today's orders") },
-                actions = { TextButton(onClick = onOpenSettings) { Text("Settings") } },
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Hud.bg),
+        contentPadding = PaddingValues(
+            start = 14.dp, end = 14.dp,
+            top = insets.calculateTopPadding() + 8.dp,
+            bottom = insets.calculateBottomPadding() + 28.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item { TopBar(state, fmt, actions.onOpenSettings) }
+        item { banner() }
+        item { TelemetryStrip(orders, next, now, fmt) }
+        item { MissionPanel(state, next, fmt) }
+        item { BriefPanel(orders, now, fmt) }
+        item {
+            HudPanel(
+                title = "Day radar",
+                subtitle = "24 h · 00:00 at top",
+                trailing = { HudChip("Now ${fmt(now)}", Tone.GREEN) },
+            ) {
+                DayRadar(orders, list, next, now, fmt, Modifier.padding(horizontal = 6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    HudChip("Sleep ${fmt(orders.lightsOut)}–${fmt(orders.nextWake)}")
+                    HudChip("Sharpest", Tone.GREEN)
+                    HudChip("Wind down", Tone.AMBER)
+                    HudChip("● Orders")
+                }
+            }
+        }
+        item {
+            HudPanel(
+                title = "Energy telemetry",
+                subtitle = "Predicted alertness · three-process model",
+                trailing = { HudChip("Estimate", Tone.AMBER) },
+            ) {
+                EnergyChart(orders, now, fmt)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    HudChip("Peak ~${fmt(orders.peakAt)}", Tone.GREEN)
+                    HudChip("Groggy to ${fmt(orders.groggyUntil)}")
+                    HudChip("Sleepy line 7", Tone.AMBER)
+                }
+            }
+        }
+        item { TimelinePanel(list, state, now, fmt, actions) }
+        item {
+            Text(
+                "Wellness tool, not a medical device. No data leaves this phone. Sleep debt appears once Commander can see your real nights.",
+                style = HudType.small,
+                color = Hud.dim,
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
             )
-        },
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 16.dp, end = 16.dp,
-                top = padding.calculateTopPadding() + 8.dp,
-                bottom = padding.calculateBottomPadding() + 24.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        orders.date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.FULL)),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Text(
-                        statusLine(orders, state.now, fmt),
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
+        }
+    }
+}
+
+@Composable
+private fun TopBar(state: UiState.Ready, fmt: (LocalDateTime) -> String, onOpenSettings: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Mark()
+        Column(Modifier.weight(1f)) {
+            Text("COMMANDER", style = HudType.title.copy(fontSize = 14.sp), color = Hud.ink)
+            val c = state.campaign
+            Text(
+                when {
+                    c == null -> "Campaign starts today"
+                    c.complete -> "Campaign complete · ${c.totalDays} days"
+                    else -> "Day ${c.day.toString().padStart(3, '0')} / ${c.totalDays}"
+                }.uppercase(),
+                style = HudType.label,
+                color = Hud.green,
+            )
+        }
+        HudChip(fmt(state.now))
+        SquareButton("Open settings", onOpenSettings) {
+            Icon(Icons.Outlined.Settings, contentDescription = null, tint = Hud.muted, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun TelemetryStrip(orders: TodayOrders, next: Order?, now: LocalDateTime, fmt: (LocalDateTime) -> String) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState()),
+    ) {
+        if (next != null) {
+            StatCell("Next order", "${next.title.trimEnd('.')} ${fmt(next.at)}", accent = Hud.green)
+            StatCell("ETA", countdown(now, next.at), accent = Hud.green)
+        }
+        StatCell("Lights out", fmt(orders.lightsOut), accent = Hud.amber)
+        StatCell("Need", formatHours(orders.needH))
+        StatCell("Up next", fmt(orders.nextWake))
+    }
+}
+
+@Composable
+private fun MissionPanel(state: UiState.Ready, next: Order?, fmt: (LocalDateTime) -> String) {
+    val o = state.orders
+    HudPanel(
+        decoration = Modifier.contours(),
+        background = Brush.verticalGradient(listOf(Hud.panel, Hud.bg)),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("MISSION", style = HudType.label, color = Hud.muted)
+            HudChip("Phase · ${phase(o, state.now)}", Tone.GREEN)
+        }
+        Text(statusLine(o, state.now, fmt), style = HudType.headline, color = Hud.ink)
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            KeyValue("Next order", next?.let { "${it.title.trimEnd('.')} · ${fmt(it.at)}" } ?: "None today", Hud.green)
+            KeyValue("Lights out", fmt(o.lightsOut), Hud.amber)
+            KeyValue("Sleep need", formatHours(o.needH))
+            KeyValue("Sleep debt", "No night data yet", Hud.dim)
+        }
+    }
+}
+
+@Composable
+private fun BriefPanel(orders: TodayOrders, now: LocalDateTime, fmt: (LocalDateTime) -> String) {
+    HudPanel(
+        background = Brush.verticalGradient(listOf(Hud.mint, Hud.mintDeep)),
+        border = Hud.mint,
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("◆ MISSION BRIEF", style = HudType.title, color = Hud.onMint, modifier = Modifier.weight(1f))
+            Text(fmt(now), style = HudType.label, color = Hud.onMint.copy(alpha = 0.7f))
+        }
+        Wireframe(orders, Modifier.fillMaxWidth().height(72.dp))
+        Text(brief(orders, now, fmt), style = HudType.body, color = Hud.onMint)
+        Text(
+            "Planned from your usual schedule. The sharpest window is an estimate.",
+            style = HudType.small,
+            color = Hud.onMint.copy(alpha = 0.7f),
+        )
+    }
+}
+
+/** Today's energy curve as a wireframe ribbon, in the spirit of the reference's line-art panel. */
+@Composable
+private fun Wireframe(orders: TodayOrders, modifier: Modifier) {
+    Canvas(modifier) {
+        val pts = orders.curve
+        if (pts.size < 2) return@Canvas
+        val t0 = pts.first().at
+        val total = Duration.between(t0, pts.last().at).toMinutes().toFloat().coerceAtLeast(1f)
+        val lo = pts.minOf { it.alertness }.toFloat()
+        val hi = pts.maxOf { it.alertness }.toFloat()
+        val layers = 6
+        val depth = size.height * 0.35f
+        fun at(i: Int, layer: Int): Offset {
+            val p = pts[i]
+            val fx = Duration.between(t0, p.at).toMinutes() / total
+            val fy = (p.alertness.toFloat() - lo) / (hi - lo).coerceAtLeast(0.01f)
+            val shift = layer * (depth / layers)
+            return Offset(fx * (size.width - depth) + shift, (1f - fy) * (size.height - depth) + shift)
+        }
+        for (layer in 0 until layers) {
+            val path = Path()
+            for (i in pts.indices) {
+                val p = at(i, layer)
+                if (i == 0) path.moveTo(p.x, p.y) else path.lineTo(p.x, p.y)
             }
-            item {
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
-                    EnergyChart(orders, state.now, fmt, Modifier.padding(16.dp))
-                }
-            }
-            items(list, key = { it.kind.name }) { order ->
-                OrderRow(
-                    order, fmt, timeWidth,
-                    isPast = order.at.isBefore(state.now) && (order.until?.isBefore(state.now) ?: true),
-                )
-            }
-            item {
-                HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                Text(
-                    "Sleep debt starts once Commander can see your real nights. Until then, orders use " +
-                        "your usual schedule. Tap any order to see why.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            drawPath(path, Hud.onMint.copy(alpha = 0.75f - layer * 0.1f), style = Stroke(1.dp.toPx(), cap = StrokeCap.Round))
+        }
+        for (i in pts.indices step 12) {
+            drawLine(Hud.onMint.copy(alpha = 0.35f), at(i, 0), at(i, layers - 1), 1.dp.toPx())
+        }
+    }
+}
+
+@Composable
+private fun TimelinePanel(
+    list: List<Order>,
+    state: UiState.Ready,
+    now: LocalDateTime,
+    fmt: (LocalDateTime) -> String,
+    actions: TodayActions,
+) {
+    HudPanel(
+        title = "Mission timeline",
+        subtitle = "Tap an order for the reason",
+        trailing = { HudChip("${list.size} entries") },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (order in list) {
+                TimelineRow(
+                    order = order,
+                    fmt = fmt,
+                    now = now,
+                    reminderOn = order.kind in state.settings.reminders,
+                    onToggleReminder = actions.onToggleReminder,
+                    onSetAlarm = actions.onSetAlarm,
                 )
             }
         }
@@ -114,45 +279,89 @@ fun TodayScreen(state: UiState.Ready, onOpenSettings: () -> Unit) {
 }
 
 @Composable
-private fun OrderRow(order: Order, fmt: (LocalDateTime) -> String, timeWidth: Dp, isPast: Boolean) {
+private fun TimelineRow(
+    order: Order,
+    fmt: (LocalDateTime) -> String,
+    now: LocalDateTime,
+    reminderOn: Boolean,
+    onToggleReminder: (OrderKind, Boolean) -> Unit,
+    onSetAlarm: (LocalDateTime) -> Unit,
+) {
     var open by rememberSaveable(order.kind) { mutableStateOf(false) }
-    val dim = if (isPast) 0.55f else 1f
-    val ink = MaterialTheme.colorScheme.onSurface.copy(alpha = dim)
-    val sub = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = dim)
-    Column(
+    val past = order.at.isBefore(now) && (order.until?.isBefore(now) ?: true)
+    val current = !order.at.isAfter(now) && order.until?.isAfter(now) == true
+    val warn = order.kind == OrderKind.CAFFEINE || order.kind == OrderKind.LIGHTS_OUT || order.kind == OrderKind.WIND_DOWN
+    val accent = when {
+        past -> Hud.dim
+        warn -> Hud.amber
+        order.kind in REMINDABLE -> Hud.green
+        else -> Hud.muted
+    }
+    val alpha = if (past) 0.5f else 1f
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .clip(RoundedCornerShape(6.dp))
+            .background(if (current) Hud.panelHi else Hud.panel)
             .clickable(onClickLabel = if (open) "Hide reason" else "Show reason", role = Role.Button) { open = !open }
-            .animateContentSize()
-            .padding(vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .animateContentSize(),
     ) {
-        Row {
+        Box(
+            Modifier
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(accent),
+        )
+        Column(
+            Modifier
+                .weight(1f)
+                .padding(start = 10.dp, top = 8.dp, bottom = 8.dp, end = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                HudChip(fmt(order.at) + (order.until?.let { "–" + fmt(it) } ?: ""), if (past) Tone.MUTED else if (warn) Tone.AMBER else Tone.GREEN)
+                HudChip(if (order.kind in REMINDABLE) "Order" else "Info")
+                if (order.estimate) HudChip("Est", Tone.AMBER)
+                if (current) HudChip("Now", Tone.SOLID)
+            }
             Text(
-                fmt(order.at) + (order.until?.let { "\n–" + fmt(it) } ?: ""),
-                modifier = Modifier.width(timeWidth),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.primary.copy(alpha = dim),
-                softWrap = false,
+                order.title.trimEnd('.').uppercase(),
+                style = HudType.value,
+                color = Hud.ink.copy(alpha = alpha),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(order.title, style = MaterialTheme.typography.titleMedium, color = ink)
-                if (order.estimate) {
-                    Text(
-                        "Estimate",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.secondary.copy(alpha = dim),
-                    )
-                }
-                Text(order.detail, style = MaterialTheme.typography.bodyMedium, color = sub)
-                if (open) {
-                    Text(
-                        "Why: " + order.why,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = sub,
-                        modifier = Modifier.padding(top = 4.dp),
-                    )
-                }
+            Text(order.detail, style = HudType.small, color = Hud.muted.copy(alpha = alpha))
+            if (open) Text("Why: ${order.why}", style = HudType.small, color = Hud.ink.copy(alpha = 0.8f))
+            if (order.kind == OrderKind.TOMORROW) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    "SET ALARM FOR ${fmt(order.at)}",
+                    style = HudType.label,
+                    color = Hud.onMint,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Hud.green)
+                        .clickable(role = Role.Button) { onSetAlarm(order.at) }
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                )
+            }
+        }
+        if (order.kind in REMINDABLE) {
+            SquareButton(
+                contentDescription = if (reminderOn) "Turn off reminder for ${order.title}" else "Turn on reminder for ${order.title}",
+                onClick = { onToggleReminder(order.kind, !reminderOn) },
+                active = reminderOn,
+                modifier = Modifier.padding(8.dp),
+            ) {
+                Icon(
+                    Icons.Outlined.Notifications,
+                    contentDescription = null,
+                    tint = if (reminderOn) Hud.green else Hud.dim,
+                    modifier = Modifier.size(17.dp),
+                )
             }
         }
     }

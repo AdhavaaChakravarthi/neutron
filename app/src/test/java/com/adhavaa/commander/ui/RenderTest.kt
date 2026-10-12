@@ -13,12 +13,12 @@ import com.adhavaa.commander.UiState
 import com.adhavaa.commander.data.Settings
 import com.adhavaa.commander.model.UsualSchedule
 import com.adhavaa.commander.model.ordersFor
+import com.adhavaa.commander.orders.campaign
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -40,14 +40,21 @@ class RenderTest {
     private val outDir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
     private val day = LocalDate.of(2026, 10, 12)
 
-    private fun ready(bed: LocalTime, wake: LocalTime, now: LocalDateTime, target: LocalTime? = null): UiState.Ready {
-        val settings = Settings(onboarded = true, bedtime = bed, wake = wake, targetWake = target, needMinutes = 480)
+    private fun ready(
+        bed: LocalTime,
+        wake: LocalTime,
+        now: LocalDateTime,
+        target: LocalTime? = null,
+    ): UiState.Ready {
+        val settings = Settings(
+            onboarded = true, bedtime = bed, wake = wake, targetWake = target, needMinutes = 480,
+            campaignStart = LocalDate.of(2026, 10, 11),
+        )
         val orders = ordersFor(day, UsualSchedule(bed, wake), needH = 8.0, targetWake = target)
-        return UiState.Ready(settings, now, orders)
+        return UiState.Ready(settings, now, orders, campaign(settings.campaignStart!!, now.toLocalDate()))
     }
 
-    private fun render(name: String, night: Boolean = false, fontScale: Float = 1f, content: @Composable () -> Unit) {
-        if (night) RuntimeEnvironment.setQualifiers("+night")
+    private fun render(name: String, fontScale: Float = 1f, content: @Composable () -> Unit) {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
         activity.setContent {
             val density = LocalDensity.current
@@ -66,40 +73,60 @@ class RenderTest {
         assertTrue("$name rendered blank (${colours.size} colours)", colours.size > 20)
     }
 
-    private val steady get() = ready(LocalTime.of(23, 30), LocalTime.of(7, 30), LocalDateTime.of(2026, 10, 12, 16, 0))
+    private val usualBed = LocalTime.of(23, 30)
+    private val usualWake = LocalTime.of(7, 30)
 
     @Test
-    fun todayAfternoon() = render("1-today") { TodayScreen(steady, onOpenSettings = {}) }
-
-    @Test
-    @Config(qualifiers = "w393dp-h1800dp-xhdpi")
-    fun todayFullList() = render("2-today-full") { TodayScreen(steady, onOpenSettings = {}) }
-
-    @Test
-    fun todayNight() = render("3-today-dark", night = true) {
-        TodayScreen(ready(LocalTime.of(23, 30), LocalTime.of(7, 30), LocalDateTime.of(2026, 10, 12, 22, 40)), onOpenSettings = {})
+    fun todayAfternoon() = render("1-today") {
+        TodayScreen(ready(usualBed, usualWake, LocalDateTime.of(2026, 10, 12, 16, 0)), TodayActions())
     }
 
     @Test
-    @Config(qualifiers = "w393dp-h1800dp-xhdpi")
-    fun todayLateSleeperMovingEarlier() = render("4-today-late-sleeper") {
+    @Config(qualifiers = "w393dp-h3000dp-xhdpi")
+    fun todayFull() = render("2-today-full") {
+        TodayScreen(ready(usualBed, usualWake, LocalDateTime.of(2026, 10, 12, 14, 30)), TodayActions())
+    }
+
+    @Test
+    fun todayMorningSilent() = render("3-today-morning-silent") {
         TodayScreen(
-            ready(LocalTime.of(1, 30), LocalTime.of(9, 0), LocalDateTime.of(2026, 10, 12, 11, 0), target = LocalTime.of(7, 0)),
-            onOpenSettings = {},
+            ready(usualBed, usualWake, LocalDateTime.of(2026, 10, 12, 8, 5)),
+            TodayActions(),
+            banner = { SilentBanner {} },
         )
     }
 
     @Test
-    fun todayLargeText() = render("5-today-large-text", fontScale = 1.6f) { TodayScreen(steady, onOpenSettings = {}) }
+    fun todayNight() = render("4-today-night") {
+        TodayScreen(ready(usualBed, usualWake, LocalDateTime.of(2026, 10, 12, 22, 40)), TodayActions())
+    }
 
     @Test
-    fun onboarding() = render("6-onboarding") {
+    @Config(qualifiers = "w393dp-h3000dp-xhdpi")
+    fun todayLateSleeperMovingEarlier() = render("5-today-late-sleeper") {
+        TodayScreen(
+            ready(LocalTime.of(1, 30), LocalTime.of(9, 0), LocalDateTime.of(2026, 10, 12, 11, 0), target = LocalTime.of(7, 0)),
+            TodayActions(),
+        )
+    }
+
+    @Test
+    fun todayLargeText() = render("6-today-large-text", fontScale = 1.6f) {
+        TodayScreen(ready(usualBed, usualWake, LocalDateTime.of(2026, 10, 12, 16, 0)), TodayActions())
+    }
+
+    @Test
+    fun onboarding() = render("7-onboarding") {
         OnboardingScreen(Settings(false, Settings.DEFAULT_BEDTIME, Settings.DEFAULT_WAKE, null, 480), onDone = { _, _ -> })
     }
 
     @Test
-    @Config(qualifiers = "w393dp-h2400dp-xhdpi")
-    fun settings() = render("7-settings") {
-        SettingsScreen(steady, onBack = {}, onSchedule = { _, _ -> }, onTargetWake = {}, onNeed = {})
+    @Config(qualifiers = "w393dp-h3000dp-xhdpi")
+    fun settings() = render("8-settings") {
+        SettingsScreen(
+            ready(usualBed, usualWake, LocalDateTime.of(2026, 10, 12, 16, 0)),
+            SettingsActions(),
+            notificationsAllowed = false,
+        )
     }
 }

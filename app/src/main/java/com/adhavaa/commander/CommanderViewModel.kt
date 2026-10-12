@@ -9,12 +9,18 @@ import com.adhavaa.commander.model.TodayOrders
 import com.adhavaa.commander.model.UsualSchedule
 import com.adhavaa.commander.model.ordersFor
 import com.adhavaa.commander.model.planDateFor
+import com.adhavaa.commander.notify.OrderNotifier
+import com.adhavaa.commander.notify.OrderScheduler
+import com.adhavaa.commander.orders.Campaign
+import com.adhavaa.commander.orders.OrderKind
+import com.adhavaa.commander.orders.campaign
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
@@ -25,11 +31,16 @@ import java.time.LocalTime
 
 sealed interface UiState {
     data object Loading : UiState
-    data class Ready(val settings: Settings, val now: LocalDateTime, val orders: TodayOrders) : UiState
+    data class Ready(
+        val settings: Settings,
+        val now: LocalDateTime,
+        val orders: TodayOrders,
+        val campaign: Campaign?,
+    ) : UiState
     data class Failed(val message: String) : UiState
 }
 
-class CommanderViewModel(app: Application) : AndroidViewModel(app) {
+class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
     private val store = SettingsStore(app)
 
     private val clock: Flow<LocalDateTime> = flow {
@@ -56,7 +67,7 @@ class CommanderViewModel(app: Application) : AndroidViewModel(app) {
 
     val state: StateFlow<UiState> = combine(store.settings, clock) { s, now ->
         try {
-            UiState.Ready(s, now, todayOrders(s, now))
+            UiState.Ready(s, now, todayOrders(s, now), s.campaignStart?.let { campaign(it, now.toLocalDate()) })
         } catch (e: RuntimeException) {
             UiState.Failed(e.message ?: e.javaClass.simpleName)
         }
@@ -64,8 +75,18 @@ class CommanderViewModel(app: Application) : AndroidViewModel(app) {
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState.Loading)
 
+    init {
+        // Any settings change rebuilds the alarms. Installs from before the campaign existed start it today.
+        viewModelScope.launch(Dispatchers.Default) {
+            store.settings.distinctUntilChanged().collect { s ->
+                if (s.onboarded && s.campaignStart == null) store.setCampaignStart(LocalDate.now())
+                if (s.onboarded) OrderScheduler.reschedule(app, s)
+            }
+        }
+    }
+
     fun completeOnboarding(bed: LocalTime, wake: LocalTime) {
-        viewModelScope.launch { store.completeOnboarding(bed, wake) }
+        viewModelScope.launch { store.completeOnboarding(bed, wake, LocalDate.now()) }
     }
 
     fun setSchedule(bed: LocalTime, wake: LocalTime) {
@@ -78,6 +99,22 @@ class CommanderViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setNeedMinutes(minutes: Int) {
         viewModelScope.launch { store.setNeedMinutes(minutes) }
+    }
+
+    fun setReminder(kind: OrderKind, on: Boolean) {
+        val current = (state.value as? UiState.Ready)?.settings?.reminders ?: return
+        viewModelScope.launch { store.setReminder(kind, on, current) }
+    }
+
+    fun setCampaignStart(date: LocalDate) {
+        viewModelScope.launch { store.setCampaignStart(date) }
+    }
+
+    fun sendTestOrder() = OrderNotifier.postTest(app)
+
+    /** Called when notification permission changes, so alarms exist the moment orders can be shown. */
+    fun refreshAlarms() {
+        viewModelScope.launch(Dispatchers.Default) { OrderScheduler.reschedule(app) }
     }
 
     fun resetOnboarding() {

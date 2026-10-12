@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="window_background">#FFF6F4EE</color>
-    <color name="icon_background">#FF1B1F17</color>
-    <color name="icon_foreground">#FFE8A33D</color>
+    <!-- Commander is dark by design (DECISIONS.md D-37): the window matches the HUD background. -->
+    <color name="window_background">#FF0C0E0D</color>
+    <color name="icon_background">#FF111412</color>
+    <color name="icon_foreground">#FF6BEA8F</color>
 </resources>
