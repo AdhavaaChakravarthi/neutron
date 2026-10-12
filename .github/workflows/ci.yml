@@ -50,6 +50,17 @@ jobs:
         run: |
           grep -E "^e: |What went wrong|> Task .* FAILED" build.log | head -8 | while IFS= read -r line; do echo "::error::${line}"; done
           grep -E " STARTED$" build.log | tail -3 | while IFS= read -r line; do echo "::error::last started: ${line}"; done
+          if [ -f app/build/hang-dump.txt ]; then
+            head -1 app/build/hang-dump.txt | sed 's/^/::error::/'
+            python3 - <<'EOF'
+          import re
+          text = open("app/build/hang-dump.txt").read()
+          for block in text.split("\n\n")[1:]:
+              lines = block.strip().splitlines()
+              if lines and ('"Test worker"' in lines[0] or '"main"' in lines[0] or "Robolectric" in lines[0]):
+                  print("::error::" + " | ".join(l.strip() for l in lines[:22]))
+          EOF
+          fi
           python3 - <<'EOF'
           import glob, xml.etree.ElementTree as ET
           out = []

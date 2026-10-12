@@ -67,7 +67,10 @@ import com.adhavaa.commander.orders.OrderKind
 import com.adhavaa.commander.orders.campaign
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestName
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
@@ -91,6 +94,12 @@ import java.time.LocalTime
 @Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi")
 class RenderTest {
     private val outDir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+
+    @get:Rule
+    val name = TestName()
+
+    @Before
+    fun watch() = com.adhavaa.commander.HangWatchdog.start("RenderTest." + name.methodName)
     private val day = LocalDate.of(2026, 10, 14)
 
     private val settings = Settings(

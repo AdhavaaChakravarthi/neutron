@@ -11,7 +11,10 @@ import com.adhavaa.commander.TrainViewModel
 import com.adhavaa.commander.fuel.SearchFilter
 import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TestName
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
@@ -31,6 +34,12 @@ import java.time.Duration
 @Config(sdk = [34], qualifiers = "w393dp-h852dp-xhdpi")
 class LiveTabTest {
     private val outDir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+
+    @get:Rule
+    val name = TestName()
+
+    @Before
+    fun watch() = com.adhavaa.commander.HangWatchdog.start("LiveTabTest." + name.methodName)
 
     /**
      * Idles the main looper until [ready] or ~13 s. On timeout, says which data source didn't answer and any
