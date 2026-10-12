@@ -65,6 +65,7 @@ import com.adhavaa.commander.orders.CommandData
 import com.adhavaa.commander.orders.DetectedNight
 import com.adhavaa.commander.orders.OrderKind
 import com.adhavaa.commander.orders.campaign
+import kotlinx.coroutines.flow.first
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -343,19 +344,50 @@ class RenderTest {
      * The real Fuel tab with its real ViewModel, database and packaged food list, as the app opens it. Catches
      * on-device problems the stateless renders can't, like the food list asset going missing.
      */
+
+    /**
+     * Idles the main looper until [ready] or ~13 s. On timeout, says which data source didn't answer and any
+     * exception a coroutine threw, since those otherwise vanish into the thread's uncaught-exception handler.
+     */
+    private fun waitLive(activity: ComponentActivity, what: String, ready: () -> Boolean) {
+        val errors = java.util.Collections.synchronizedList(ArrayList<String>())
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { t, e -> errors += "${t.name}: ${e.javaClass.name}: ${e.message}" }
+        val main = Thread.currentThread()
+        val mainPrevious = main.uncaughtExceptionHandler
+        main.uncaughtExceptionHandler = Thread.UncaughtExceptionHandler { t, e -> errors += "${t.name}: ${e.javaClass.name}: ${e.message}" }
+        try {
+            var waited = 0
+            while (!ready() && waited < 100) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
+                Thread.sleep(30)
+                waited++
+            }
+            if (!ready()) {
+                val c = (activity.application as com.adhavaa.commander.CommanderApplication).container
+                val probes = kotlinx.coroutines.runBlocking {
+                    listOf(
+                        "settings" to kotlinx.coroutines.withTimeoutOrNull(3000) { c.settings.settings.first() },
+                        "weights" to kotlinx.coroutines.withTimeoutOrNull(3000) { c.fuel.observeWeights().first() },
+                        "workouts" to kotlinx.coroutines.withTimeoutOrNull(3000) { c.train.observeWorkouts().first() },
+                        "sleep" to kotlinx.coroutines.withTimeoutOrNull(3000) { c.sleep.observeSleep().first() },
+                    ).joinToString { (k, v) -> "$k=" + if (v == null) "TIMEOUT" else "ok" }
+                }
+                throw AssertionError("$what never loaded. Probes: $probes. Errors: $errors")
+            }
+        } finally {
+            Thread.setDefaultUncaughtExceptionHandler(previous)
+            main.uncaughtExceptionHandler = mainPrevious
+        }
+    }
+
     @Test
     @Config(qualifiers = "w393dp-h1700dp-xhdpi")
     fun fuelTabLive() {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
         activity.setContent { CommanderTheme { FuelRoute(onOpenSettings = {}, onFullScreen = {}) } }
         val vm = ViewModelProvider(activity)[FuelViewModel::class.java]
-        var waited = 0
-        while (vm.state.value == null && waited < 100) {
-            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
-            Thread.sleep(30)
-            waited++
-        }
-        assertTrue("Fuel state never loaded", vm.state.value != null)
+        waitLive(activity, "Fuel state") { vm.state.value != null }
         val found = kotlinx.coroutines.runBlocking { vm.search("banana", SearchFilter(fishOnly = true)) }
         assertTrue("search found nothing: ${vm.catalogError()}", found.any { it.name == "Bananas, raw" })
         repeat(5) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
@@ -477,14 +509,8 @@ class RenderTest {
         val activity = Robolectric.buildActivity(ComponentActivity::class.java).setup().get()
         activity.setContent { CommanderTheme { TrainRoute(onOpenSettings = {}, onFullScreen = {}) } }
         val vm = ViewModelProvider(activity)[TrainViewModel::class.java]
-        var waited = 0
-        while (vm.state.value == null && waited < 100) {
-            shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100))
-            Thread.sleep(30)
-            waited++
-        }
+        waitLive(activity, "Train state") { vm.state.value != null }
         val state = vm.state.value
-        assertTrue("Train state never loaded", state != null)
         assertTrue("exercise list: ${vm.catalogError()}", state!!.exercises.size == 876)
         repeat(5) { shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200)) }
         val view = activity.window.decorView

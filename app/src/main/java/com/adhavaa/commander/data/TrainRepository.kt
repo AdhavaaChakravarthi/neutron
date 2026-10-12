@@ -70,8 +70,11 @@ class TrainRepository(private val db: CommanderDb) {
         return dao.insertSet(SetEntity(0, workoutId, date.toEpochDay(), exercise, index, weight, reps, rir, System.currentTimeMillis()))
     }
 
-    suspend fun updateSet(s: SetRecord, weight: Double, reps: Int, rir: Int?) =
-        dao.updateSet(SetEntity(s.id, s.workoutId, s.date.toEpochDay(), s.exercise, s.setIndex, weight, reps, rir, System.currentTimeMillis()))
+    /** Fixes a set's numbers; it keeps its place (time logged). */
+    suspend fun updateSet(s: SetRecord, weight: Double, reps: Int, rir: Int?) {
+        val e = dao.setsOf(s.workoutId).firstOrNull { it.id == s.id } ?: return
+        dao.updateSet(e.copy(weightKg = weight, reps = reps, rir = rir))
+    }
 
     suspend fun deleteSet(id: Long) = dao.deleteSet(id)
 
