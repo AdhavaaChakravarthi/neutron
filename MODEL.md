@@ -309,7 +309,7 @@ Six corners, each 0–100, scoring how fully you carried out Commander's orders 
 
 **Minimum data.** A corner needs at least 7 counted days before it shows a number; Rhythm needs 7 pairs (**ASSUMPTIONS**). Until then the corner shows "—" and sits at the centre. **Overall** is the mean of the corners that have a number.
 
-**A week ago.** The same calculation for the window ending 7 days earlier is drawn as an outline, so you can see which way each corner moved. Changes are shown in neutral colours, never red (rule 7).
+**A week ago.** The same calculation for the window ending 7 days earlier is drawn as an outline, so you can see which way each corner moved. The outline is drawn only when every corner with a number now also had one then; otherwise a missing corner would sit at the centre and look like a drop. Changes are shown in neutral colours, never red (rule 7).
 
 **Fuel targets still move weekly.** Only the score is daily; calorie targets change at the Monday check-in (D-59, D-74).
 

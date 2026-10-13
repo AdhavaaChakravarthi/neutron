@@ -39,6 +39,7 @@ import com.adhavaa.commander.stats.StatsPicture
 import com.adhavaa.commander.stats.deltaText
 import com.adhavaa.commander.stats.scoreText
 import com.adhavaa.commander.stats.statMeaning
+import com.adhavaa.commander.stats.weekAgoComparable
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.PI
@@ -69,10 +70,13 @@ fun HexagonPanel(pic: StatsPicture) {
         subtitle = "Orders followed · ${pic.start.format(RANGE_FMT)} – ${pic.end.format(RANGE_FMT)} · updated daily",
         trailing = { HudChip("Overall ${scoreText(now.overall)}", if (now.overall != null) Tone.GREEN else Tone.MUTED) },
     ) {
-        HexagonChart(now, pic.weekAgo, Modifier.padding(horizontal = 2.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            HudChip("■ Last 21 days", Tone.GREEN)
-            HudChip("┄ A week ago")
+        val ghost = weekAgoComparable(now, pic.weekAgo)
+        HexagonChart(now, pic.weekAgo.takeIf { ghost }, Modifier.padding(horizontal = 2.dp))
+        if (now.scores.values.any { it != null }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                HudChip("■ Last 21 days", Tone.GREEN)
+                if (ghost) HudChip("┄ A week ago")
+            }
         }
         if (now.scores.values.all { it == null }) {
             Text(

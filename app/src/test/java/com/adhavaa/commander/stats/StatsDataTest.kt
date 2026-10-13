@@ -126,6 +126,9 @@ class StatsDataTest {
         assertEquals("▼2", deltaText(80.0, 82.4))
         assertEquals("", deltaText(null, 50.0))
         assertEquals("—", scoreText(null))
+        // Both weeks have sleep and rhythm, so the outline is drawn; a corner missing a week ago hides it.
+        assertTrue(weekAgoComparable(pic.now, pic.weekAgo))
+        assertFalse(weekAgoComparable(pic.now, pic.weekAgo.copy(scores = pic.weekAgo.scores + (Stat.RHYTHM to null))))
     }
 
     @Test

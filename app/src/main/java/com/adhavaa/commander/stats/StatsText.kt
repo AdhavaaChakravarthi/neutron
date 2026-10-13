@@ -26,3 +26,10 @@ fun statMeaning(s: Stat, needH: Double): String = when (s) {
     Stat.ENDURANCE -> "Swim, bike and run minutes done out of minutes planned. Going over earns nothing extra."
     Stat.MOBILITY -> "Days with a mobility session."
 }
+
+/**
+ * Last week's outline is drawn only when every corner that has a number now also had one a week ago; otherwise a
+ * missing corner would sit at the centre and look like a drop.
+ */
+fun weekAgoComparable(now: com.adhavaa.commander.model.Hexagon, before: com.adhavaa.commander.model.Hexagon): Boolean =
+    now.scores.values.any { it != null } && Stat.entries.all { now.scores[it] == null || before.scores[it] != null }
