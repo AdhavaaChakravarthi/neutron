@@ -435,10 +435,10 @@ def need_from_history(nights: Sequence[Episode], natural: Sequence[bool], naps: 
 
 
 def sleep_regularity_index(nights: Sequence[Episode], naps: Sequence[Episode], today: int,
-                           days: int = 7, step_h: float = 5 / 60) -> float | None:
+                           days: int = 7, step_h: float = 5 / 60, min_pairs: int = 3) -> float | None:
     """Phillips et al. 2017: probability of being in the same state (asleep/awake) 24 h apart, scaled so that
     perfectly regular = 100 and random = 0 (SRI = 200 * P(same) - 100). Compared only across consecutive wake
-    days that both have a recorded night; noon-to-noon windows. None with fewer than 3 such pairs."""
+    days that both have a recorded night; noon-to-noon windows. None with fewer than min_pairs such pairs."""
     recorded = {wake_day(e) for e in nights}
     eps = list(nights) + list(naps)
 
@@ -457,7 +457,7 @@ def sleep_regularity_index(nights: Sequence[Episode], naps: Sequence[Episode], t
             b = asleep(t + i * step_h + 24.0)
             same += a == b
             total += 1
-    if pairs < 3:
+    if pairs < min_pairs:
         return None
     return 200.0 * same / total - 100.0
 
@@ -813,3 +813,68 @@ EASY_RPE = 4                # ASSUMPTION: a session rated 4 or below counts as e
 
 def easy_share(rpes: Sequence[float]) -> float | None:
     return None if not rpes else sum(1 for r in rpes if r <= EASY_RPE) / len(rpes)
+
+
+# ---------------------------------------------------------------------------
+# 9. Stats hexagon (MODEL.md section 12)
+# ---------------------------------------------------------------------------
+
+STATS_WINDOW = 21           # ASSUMPTION: the same 21 days as the Fuel window
+STATS_MIN_DAYS = 7          # ASSUMPTION: counted days (or night pairs for rhythm) before a corner shows
+KCAL_BAND = 0.10            # ASSUMPTION: a fully logged day within 10% of the calorie target scores 1
+LOGGED_CREDIT = 0.5         # ASSUMPTION: a fully logged day outside the band scores 0.5
+STATS = ("SLEEP", "RHYTHM", "FUEL", "STRENGTH", "ENDURANCE", "MOBILITY")
+
+
+@dataclass(frozen=True)
+class StatDay:
+    """One day of the window with the night after it.
+    sleep_h: sleep that night (None = no data). kcal_target: the day's calorie target (None = no target).
+    kcal: eaten if fully logged (None = not fully logged). train: Train set up and not a stand-down day."""
+    sleep_h: float | None = None
+    kcal_target: float | None = None
+    kcal: float | None = None
+    train: bool = False
+    lift_planned: bool = False
+    lifts: int = 0
+    endurance_planned: float = 0.0
+    endurance_done: float = 0.0
+    mobility: bool = False
+
+
+@dataclass(frozen=True)
+class Hexagon:
+    scores: dict          # corner -> 0..100 or None
+    counted: dict         # corner -> counted days (rhythm: nights with data)
+    overall: float | None
+
+
+def fuel_day_score(target: float, kcal: float | None) -> float:
+    if kcal is None:
+        return 0.0
+    return 1.0 if abs(kcal - target) <= KCAL_BAND * target else LOGGED_CREDIT
+
+
+def hexagon(days: Sequence[StatDay], need_h: float, sri: float | None) -> Hexagon:
+    """Corners score orders followed over the window, 0-100; None until STATS_MIN_DAYS counted days."""
+    slept = [d.sleep_h for d in days if d.sleep_h is not None]
+    fuel = [d for d in days if d.kcal_target is not None]
+    train = [d for d in days if d.train]
+    lift_plan = sum(1 for d in train if d.lift_planned)
+    end_plan = sum(d.endurance_planned for d in train)
+
+    def enough(n: int, value: float | None) -> float | None:
+        return None if n < STATS_MIN_DAYS or value is None else 100.0 * value
+
+    scores = {
+        "SLEEP": enough(len(slept), sum(min(1.0, h / need_h) for h in slept) / len(slept) if slept else None),
+        "RHYTHM": None if sri is None else min(100.0, max(0.0, sri)),
+        "FUEL": enough(len(fuel), sum(fuel_day_score(d.kcal_target, d.kcal) for d in fuel) / len(fuel) if fuel else None),
+        "STRENGTH": enough(len(train), min(1.0, sum(d.lifts for d in train) / lift_plan) if lift_plan else None),
+        "ENDURANCE": enough(len(train), min(1.0, sum(d.endurance_done for d in train) / end_plan) if end_plan > 0 else None),
+        "MOBILITY": enough(len(train), sum(1 for d in train if d.mobility) / len(train) if train else None),
+    }
+    counted = {"SLEEP": len(slept), "RHYTHM": len(slept), "FUEL": len(fuel),
+               "STRENGTH": len(train), "ENDURANCE": len(train), "MOBILITY": len(train)}
+    shown = [v for v in scores.values() if v is not None]
+    return Hexagon(scores, counted, sum(shown) / len(shown) if shown else None)

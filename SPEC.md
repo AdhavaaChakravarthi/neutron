@@ -61,6 +61,7 @@ Dark tactical HUD (D-37), top to bottom:
 - **Telemetry strip:** next order and countdown, lights out, sleep need, tomorrow's wake.
 - **Mission panel** over contour lines: current phase, the "right now" line, next order, lights out, need, debt.
 - **Mission brief** (the mint panel, read this first): what's left of today in two or three sentences, over a wireframe of today's curve.
+- **Last 21 days** (MODEL.md §12): a hexagon with Sleep, Rhythm, Fuel, Strength, Endurance and Mobility corners scored 0–100 for orders followed, recalculated every day, with an Overall number and last week's shape as an outline. Below it, each corner's number and its change from a week ago; "How it's scored" opens one line per corner. A corner without 7 days of data shows "—".
 - **Day radar:** a 24-hour dial with sleep, groggy, sharpest and wind-down bands, order blips and a sweep at now.
 - **Energy telemetry:** the curve with groggy (hatched), sharpest (green) and wind-down (amber) zones and the sleepiness line.
 - **Mission timeline:** every order with time, type (order / info / estimate), reason on tap, a reminder toggle for each order that can notify, and "Set alarm" on tomorrow's wake.

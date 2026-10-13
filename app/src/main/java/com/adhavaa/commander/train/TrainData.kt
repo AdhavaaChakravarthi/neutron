@@ -162,6 +162,27 @@ private fun dayPlan(date: LocalDate, week: PlanWeek?, standDown: StandDown?, eas
     return DayPlan(date, liftDayFor(iso), sessions, null, eased)
 }
 
+/**
+ * What each day from [from] to [to] asked for, as the plan stood (no easing). Days before setup are left out
+ * (MODEL.md section 12).
+ */
+fun dayPlans(data: TrainData, from: LocalDate, to: LocalDate, today: LocalDate): List<DayPlan> {
+    val s = data.settings
+    val start = s.start ?: return emptyList()
+    val actual = actualMinutes(data, start, today)
+    val raceWeek = s.raceDate?.let { weekIndex(start, it) }
+    val weeks = HashMap<Int, PlanWeek>()
+    val out = ArrayList<DayPlan>()
+    var d = if (from.isBefore(start)) start else from
+    while (!d.isAfter(to)) {
+        val i = weekIndex(start, d)
+        val week = weeks.getOrPut(i) { weekPlan(i, s.currentMinutes, s.peakMinutes, raceWeek, actual) }
+        out += dayPlan(d, week, data.standDowns[d], eased = false)
+        d = d.plusDays(1)
+    }
+    return out
+}
+
 /** Sessions of [exerciseId] as lists of sets, oldest first, from finished workouts before [before]. */
 fun liftHistory(data: TrainData, exerciseId: String, before: LocalDate? = null): List<List<LiftSet>> {
     val ended = data.workouts.filter { it.kind == WorkoutKind.LIFT && it.ended }.associateBy { it.id }

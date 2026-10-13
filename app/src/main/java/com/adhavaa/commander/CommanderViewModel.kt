@@ -10,6 +10,8 @@ import com.adhavaa.commander.fuel.FuelPicture
 import com.adhavaa.commander.fuel.Nutrients
 import com.adhavaa.commander.fuel.fuelPicture
 import com.adhavaa.commander.fuel.totals
+import com.adhavaa.commander.stats.StatsPicture
+import com.adhavaa.commander.stats.statsPicture
 import com.adhavaa.commander.train.TrainData
 import com.adhavaa.commander.train.TrainPicture
 import com.adhavaa.commander.train.trainPicture
@@ -78,6 +80,8 @@ sealed interface UiState {
         val eaten: Nutrients = Nutrients.ZERO,
         /** Today's training, for the Train and Mobility orders. */
         val train: TrainPicture? = null,
+        /** The last 21 days as a stats hexagon (MODEL.md section 12). */
+        val hexagon: StatsPicture? = null,
     ) : UiState
     data class Failed(val message: String) : UiState
 }
@@ -125,7 +129,21 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
         val access: Boolean,
         val fuel: Pair<FuelPicture, Nutrients>,
         val train: TrainData,
+        val fuelData: FuelData,
     )
+
+    // The hexagon changes once a day, or when a log changes; the 30-second clock doesn't rebuild it.
+    private var hexKey: List<Any?>? = null
+    private var hexCached: StatsPicture? = null
+
+    private fun hexagonFor(d: CommandData, date: LocalDate, needH: Double, fuel: FuelData, train: TrainData): StatsPicture {
+        val key = listOf(d, date, needH, fuel, train)
+        hexCached?.takeIf { hexKey == key }?.let { return it }
+        return statsPicture(date, d.sleep, d.skipped, needH, fuel, train).also {
+            hexKey = key
+            hexCached = it
+        }
+    }
 
     // Food days are calendar days. Today's picture is rebuilt when the date turns or fuel data changes.
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -134,7 +152,7 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
 
     val state: StateFlow<UiState> = combine(
         data, c.sleep.observeSleep(), c.sleep.observeDone(), clock,
-        combine(detected, usageAccess, fuelToday, trainData) { d, a, f, t -> Extras(d, a, f, t) },
+        combine(detected, usageAccess, fuelToday, trainData, fuelData) { d, a, f, t, fd -> Extras(d, a, f, t, fd) },
     ) { d, stored, done, now, x ->
         val det = x.detected
         val access = x.access
@@ -161,6 +179,7 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
                 fuel = fuel.first,
                 eaten = fuel.second,
                 train = trainPicture(x.train, now.toLocalDate(), now.toLocalDate(), p.stats.debtH),
+                hexagon = hexagonFor(d, date, p.stats.needH, x.fuelData, x.train),
             )
         } catch (e: RuntimeException) {
             UiState.Failed(e.message ?: e.javaClass.simpleName)

@@ -112,3 +112,15 @@ fun sleepPicture(
     )
     return SleepPicture(orders, stats)
 }
+
+/**
+ * Sleep Regularity Index over the [days] wake days ending [lastWake], or null with fewer than [minPairs] pairs of
+ * back-to-back recorded nights (MODEL.md sections 9 and 12).
+ */
+fun regularityOver(records: List<SleepRecord>, lastWake: LocalDate, days: Int, minPairs: Int): Double? {
+    val f = Frame(lastWake)
+    val inRange = records.filter { it.end.isAfter(f.origin) && it.end.isAfter(it.start) && !it.end.toLocalDate().isAfter(lastWake) }
+    val nights = inRange.filter { it.kind == SleepKind.NIGHT }.map { Episode(f.h(it.start), f.h(it.end)) }
+    val naps = inRange.filter { it.kind == SleepKind.NAP }.map { Episode(f.h(it.start), f.h(it.end)) }
+    return sleepRegularityIndex(nights, naps, f.today, days, minPairs = minPairs)
+}

@@ -128,6 +128,7 @@ fun TodayScreen(state: UiState.Ready, actions: TodayActions, banner: @Composable
                     .joinToString("\n").ifBlank { null },
             )
         }
+        state.hexagon?.let { h -> item { HexagonPanel(h) } }
         item {
             HudPanel(
                 title = "Day radar",

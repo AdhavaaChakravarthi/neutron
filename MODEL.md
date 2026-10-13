@@ -1,6 +1,6 @@
 # Commander model
 
-How Commander turns sleep history into a sleep-need estimate, a sleep-debt number and a daily energy curve, food and weight logs into calorie and macro targets (§10), and training logs into a lifting program, an endurance plan and mobility work (§11). Every parameter has a source or is labelled **ASSUMPTION** or **RECONSTRUCTED**. The executable version is `tools/model-reference/commander_model.py`; `check_model.py` runs the behavioural checks below.
+How Commander turns sleep history into a sleep-need estimate, a sleep-debt number and a daily energy curve, food and weight logs into calorie and macro targets (§10), training logs into a lifting program, an endurance plan and mobility work (§11), and all of it into a daily stats hexagon (§12). Every parameter has a source or is labelled **ASSUMPTION** or **RECONSTRUCTED**. The executable version is `tools/model-reference/commander_model.py`; `check_model.py` runs the behavioural checks below.
 
 Commander is a personal wellness tool. Nothing here diagnoses or treats a sleep disorder or any other condition.
 
@@ -105,10 +105,10 @@ Implemented in `plan_day` / `plan_for_schedule` (Python) and `planDay` / `planFo
 
 `python3 tools/model-reference/check_model.py` currently reports:
 
-- **Pass (34):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check; the 10 fuel checks in §10; the 11 Train checks in §11.5.
+- **Pass (40):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check; the 10 fuel checks in §10; the 11 Train checks in §11.5; the 6 hexagon checks in §12.
 - **Known limitations (3, reported every run, don't fail the build):** no afternoon dip/second wind; no accumulation across short nights; one recovery night fully restores. Decided in D-25 and D-26.
 
-`python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules, real-night histories, trend weight and check-ins for four fuel cases, and Train's 1RM estimates, progression decisions and four endurance plans with their sessions). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
+`python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules, real-night histories, trend weight and check-ins for four fuel cases, Train's 1RM estimates, progression decisions and four endurance plans with their sessions, and hexagon scores with the 21-night regularity index). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
 
 ## 9. Real nights
 
@@ -287,6 +287,42 @@ ACSM: flexibility exercises at least 2–3 days a week (daily is most effective)
 - Each taper week is 41–60% below the pre-taper base.
 - The cap follows a missed week.
 - Session minutes add up to the week's plan within rounding.
+
+## 12. Stats hexagon
+
+Implemented in section 9 of `commander_model.py` and in `model/.../Stats.kt`; golden vectors in `golden/stats*.csv`.
+
+Six corners, each 0–100, scoring how fully you carried out Commander's orders over the last 21 days. It scores following orders, not fitness, and it doesn't assess or diagnose anything.
+
+**Window.** The 21 days ending yesterday, each with the night after it, so the last night counted is the one that ended this morning. It's recalculated every day, when the plan day turns over (§7). 21 days matches the Fuel window (§10) (**ASSUMPTION**). Every day counts the same. A missed order costs only its share of the window: about 5 points for a night, a food day or a mobility session, about 8 for one of the ~12 planned lifts, and a long ride its share of the planned minutes. It drops out of the window 21 days later, and there's no streak to break (rule of command 7).
+
+| Corner | Score per window | Counted days | Basis |
+|---|---|---|---|
+| Sleep | Mean of min(1, sleep that night ÷ sleep need) | Nights with data (§9) | Need from §3; aim for enough, never less (rule 4). Sleep past your need earns nothing extra (**ASSUMPTION**) |
+| Rhythm | Sleep Regularity Index over the 21 nights, kept between 0 and 100 | Pairs of back-to-back recorded nights | Phillips et al. 2017 [17], as in §9 |
+| Fuel | Mean day score: 1 for a fully logged day within ±10% of the calorie target, 0.5 for a fully logged day outside it, 0 otherwise | Days with a calorie target (from setup on, fruit days excluded) | Logging is what the expenditure estimate learns from (§10). The ±10% band and the half credit are **ASSUMPTIONS** |
+| Strength | Lifts finished ÷ lifts planned, at most 1 | Train days | §11.1. A lift moved to another day in the window still counts |
+| Endurance | Swim + bike + run minutes ÷ planned minutes, at most 1 | Train days | §11.3. Going over the plan earns nothing extra (rule 3) |
+| Mobility | Days with a mobility session ÷ train days | Train days | §11.4: the order is daily |
+
+**Train days** run from Train setup on, minus stand-down days. Stand-down days are left out of all three Train corners, because resting when told to is following orders (rule of command 6).
+
+**Minimum data.** A corner needs at least 7 counted days before it shows a number; Rhythm needs 7 pairs (**ASSUMPTIONS**). Until then the corner shows "—" and sits at the centre. **Overall** is the mean of the corners that have a number.
+
+**A week ago.** The same calculation for the window ending 7 days earlier is drawn as an outline, so you can see which way each corner moved. Changes are shown in neutral colours, never red (rule 7).
+
+**Fuel targets still move weekly.** Only the score is daily; calorie targets change at the Monday check-in (D-59, D-74).
+
+**Not scored:** weigh-ins, protein, sets, reps or loads, and sleepiness ratings.
+
+**Checks.** `check_model.py` adds 6 checks:
+
+- Following every order scores 100 on every corner.
+- One missed day costs each corner only its share of the window.
+- Doing more than planned can't score above 100.
+- Stand-down days don't lower the Train corners.
+- Fewer than 7 counted days gives no number.
+- A fully logged day off target gets half credit.
 
 ---
 

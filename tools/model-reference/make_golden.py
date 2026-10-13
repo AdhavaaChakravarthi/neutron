@@ -13,7 +13,8 @@ from pathlib import Path
 from commander_model import (KCAL_PER_KG, Episode, FuelProfile, Prescription, TpmParams, chronotype_msfsc, daily_sleep,
                              detect_rest_period, e1rm, estimate_need, fuel_check_ins, need_from_history, next_load,
                              personal_acrophase, plan_for_schedule, plan_from_history, schedule_episodes, simulate,
-                             sleep_debt, sleep_regularity_index, social_jetlag, trend_series, week_plan, week_sessions)
+                             sleep_debt, sleep_regularity_index, social_jetlag, trend_series, week_plan, week_sessions,
+                             STATS, STATS_MIN_DAYS, STATS_WINDOW, StatDay, hexagon)
 
 OUT = Path(__file__).resolve().parent / "golden"
 TOL = 1e-8
@@ -194,7 +195,47 @@ def files() -> dict[str, str]:
             rows.append(f"{name},{f(v0)},{f(vp)},{'' if race is None else race},{i},{f(wk.minutes)},{wk.phase},"
                         f"{f(wk.recovery)},{f(wk.capped)},{ses}")
     out["train_plan.csv"] = "\n".join(rows) + "\n"
+    # --- stats hexagon ----------------------------------------------------
+    rows = ["case,need,sri,days," + ",".join(c.lower() for c in STATS) + ",counted,overall"]
+    for name, (need, sri, days) in stats_cases().items():
+        h = hexagon(days, need, sri)
+        enc = ";".join(" ".join("-" if x is None else f(x) for x in (
+            d.sleep_h, d.kcal_target, d.kcal, d.train, d.lift_planned, d.lifts, d.endurance_planned, d.endurance_done,
+            d.mobility)) for d in days)
+        rows.append(f"{name},{f(need)},{f(sri)},{enc}," + ",".join(f(h.scores[c]) for c in STATS) + ","
+                    + " ".join(str(h.counted[c]) for c in STATS) + f",{f(h.overall)}")
+    out["stats.csv"] = "\n".join(rows) + "\n"
+    rows = ["case,today,sri21"]
+    for name, c in history_cases().items():
+        rows.append(f"{name},{c['today']},"
+                    f"{f(sleep_regularity_index(c['nights'], c['naps'], c['today'], STATS_WINDOW, min_pairs=STATS_MIN_DAYS))}")
+    out["stats_sri.csv"] = "\n".join(rows) + "\n"
     return out
+
+
+def stats_cases() -> dict:
+    """Hexagon windows: random days with gaps, setup part-way through, stand-downs, fruit days and over-delivery."""
+    cases = {}
+    for seed in range(8):
+        r = random.Random(100 + seed)
+        fuel_from, train_from = r.choice([0, 0, 5, 16]), r.choice([0, 0, 9, 15])
+        days = []
+        for k in range(STATS_WINDOW):
+            sleep = None if r.random() < 0.15 else round(r.uniform(4.0, 10.0), 2)
+            target = None if k < fuel_from or k % 7 == 1 else round(r.uniform(1800, 3000), 0)
+            kcal = None if target is None or r.random() < 0.2 else round(target * r.uniform(0.7, 1.3), 1)
+            train = k >= train_from and r.random() > 0.1
+            lift = train and k % 7 in (0, 1, 3, 4)
+            planned = round(r.choice([0.0, 30.0, 45.0, 90.0]), 0) if train else 0.0
+            days.append(StatDay(sleep, target, kcal, train, lift, r.choice([0, 1, 1, 1, 2]) if train else 0,
+                                planned, round(planned * r.uniform(0.0, 1.4), 1) if train else 0.0,
+                                train and r.random() < 0.6))
+        cases[f"random{seed}"] = (round(r.uniform(7.0, 9.0), 2), r.choice([None, -12.5, 48.3, 77.0, 104.0]), days)
+    cases["irregular"] = (8.0, -12.5, [StatDay(7.0, 2400.0, 2000.0 if k % 2 else 2300.0, True, k % 7 in (0, 1, 3, 4),
+                                                0 if k % 3 else 1, 60.0, 30.0, k % 2 == 0) for k in range(STATS_WINDOW)])
+    cases["empty"] = (8.0, None, [StatDay() for _ in range(STATS_WINDOW)])
+    cases["six_days"] = (8.0, 80.0, [StatDay(8.0, 2500.0, 2500.0, True, True, 1, 40.0, 40.0, True)] * 6)
+    return cases
 
 
 def fuel_cases() -> dict:

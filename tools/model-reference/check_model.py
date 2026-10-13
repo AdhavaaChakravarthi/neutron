@@ -8,10 +8,12 @@ from __future__ import annotations
 import math
 import random
 import sys
+from dataclasses import replace
 from pathlib import Path
 
-from commander_model import (KCAL_PER_KG, MAX_STEP_KCAL, PLAN_GROWTH, Episode, FuelProfile, Prescription, TpmParams,
-                              detect_rest_period, e1rm, easy_share, estimate_need, fuel_check_ins, kss_from_alertness,
+from commander_model import (KCAL_PER_KG, MAX_STEP_KCAL, PLAN_GROWTH, STATS, Episode, FuelProfile, Prescription, StatDay,
+                              TpmParams, detect_rest_period, e1rm, easy_share, estimate_need, fuel_check_ins, hexagon,
+                              kss_from_alertness,
                               losing_too_fast, next_load, personal_acrophase, plan_base, resting_energy, simulate,
                               sleep_debt, targets_on, trend_series, week_plan, week_sessions)
 
@@ -258,6 +260,40 @@ check("A missed stretch restarts gently", missed.capped and abs(missed.minutes -
       f"three weeks off -> next week {missed.minutes:.0f} min (half of the usual 300), not the planned {week_plan(4, 300, 480, None, {}).minutes:.0f}")
 check("Sessions add up to the week", sums_ok, "within 10% after rounding to 5 min and the 15-min minimum")
 check("Easy share counts sessions rated 4 or below", easy_share([2, 3, 4, 6, 3]) == 0.8 and easy_share([]) is None, "4 of 5 -> 80%")
+
+# --- Stats hexagon (MODEL.md section 12) -------------------------------------
+def ideal(k: int) -> StatDay:
+    lift = k % 7 in (0, 1, 3, 4)
+    return StatDay(sleep_h=8.0, kcal_target=2500.0, kcal=2480.0, train=True, lift_planned=lift, lifts=int(lift),
+                   endurance_planned=45.0, endurance_done=45.0, mobility=True)
+
+
+full = [ideal(k) for k in range(21)]
+perfect = hexagon(full, 8.0, 100.0)
+check("Following every order scores 100", all(abs(perfect.scores[c] - 100.0) < 1e-9 for c in STATS)
+      and abs(perfect.overall - 100.0) < 1e-9, "all six corners and overall")
+missed = list(full)
+missed[10] = replace(full[10], sleep_h=6.0, kcal=None, lifts=0, endurance_done=0.0, mobility=False)
+one = hexagon(missed, 8.0, 100.0)
+drops = {c: perfect.scores[c] - one.scores[c] for c in STATS if c != "RHYTHM"}
+share = {"SLEEP": 25.0 / 21, "FUEL": 100.0 / 21, "STRENGTH": 100.0 / 12, "ENDURANCE": 100.0 / 21, "MOBILITY": 100.0 / 21}
+check("One missed day costs only its share of the window", all(abs(drops[c] - share[c]) < 1e-9 for c in share),
+      ", ".join(f"{c.lower()} -{drops[c]:.1f}" for c in share) + " (strength: 1 of 12 planned lifts)")
+more = hexagon([replace(d, sleep_h=10.0, lifts=2 * d.lifts, endurance_done=90.0) for d in full], 8.0, 100.0)
+check("Doing more than planned can't score above 100", all(v <= 100.0 + 1e-9 for v in more.scores.values()),
+      "10 h nights, double lifts and endurance still 100")
+rested = list(full)
+for k in (5, 6, 7):
+    rested[k] = replace(full[k], train=False, lifts=0, endurance_done=0.0, mobility=False)
+sd = hexagon(rested, 8.0, 100.0)
+check("Stand-down days don't lower the Train corners",
+      all(abs(sd.scores[c] - 100.0) < 1e-9 for c in ("STRENGTH", "ENDURANCE", "MOBILITY")), "three stand-down days, still 100")
+few = hexagon(full[:6], 8.0, None)
+check("Fewer than 7 counted days gives no number", all(v is None for v in few.scores.values()) and few.overall is None,
+      "6 days of everything")
+off = hexagon([replace(d, kcal=3000.0) for d in full], 8.0, 100.0)
+check("A fully logged day off target gets half credit", abs(off.scores["FUEL"] - 50.0) < 1e-9,
+      "every day logged at 3000 vs 2500 -> 50")
 
 # --- Figure -----------------------------------------------------------------
 if "--plot" in sys.argv:

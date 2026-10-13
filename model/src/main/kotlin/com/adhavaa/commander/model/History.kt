@@ -133,7 +133,14 @@ fun needFromHistory(
 ): Double = estimateNeed(qualifyingNights(nights, natural, naps, skippedDays, priorH), priorH)
 
 /** Phillips et al. 2017: SRI = 200 * P(same state 24 h apart) - 100, over consecutive recorded wake days. */
-fun sleepRegularityIndex(nights: List<Episode>, naps: List<Episode>, today: Int, days: Int = 7, stepH: Double = 5.0 / 60.0): Double? {
+fun sleepRegularityIndex(
+    nights: List<Episode>,
+    naps: List<Episode>,
+    today: Int,
+    days: Int = 7,
+    stepH: Double = 5.0 / 60.0,
+    minPairs: Int = 3,
+): Double? {
     val recorded = nights.map { wakeDay(it) }.toSet()
     val eps = nights + naps
     fun asleep(t: Double): Boolean = eps.any { it.start <= t && t < it.end }
@@ -152,7 +159,7 @@ fun sleepRegularityIndex(nights: List<Episode>, naps: List<Episode>, today: Int,
             total++
         }
     }
-    if (pairs < 3) return null
+    if (pairs < minPairs) return null
     return 200.0 * same / total - 100.0
 }
 

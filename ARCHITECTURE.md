@@ -82,7 +82,7 @@ Each version bump ships a written migration with a test that opens the previous 
 
 | Layer | How |
 |---|---|
-| `:model` | JUnit tests against golden vectors from `tools/model-reference` (curves, debt, need, acrophase, detector, daily orders, real-night histories, fuel trend and check-ins; tolerance 1e-6), plus behaviour tests of the orders and rules of command |
+| `:model` | JUnit tests against golden vectors from `tools/model-reference` (curves, debt, need, acrophase, detector, daily orders, real-night histories, fuel trend and check-ins, Train plans and progression, hexagon scores; tolerance 1e-6), plus behaviour tests of the orders and rules of command |
 | `:app` | Pure tests for order text, reminders, brief, campaign, food parsing, diet filters, search, recipes and fuel targets (including the real USDA file); Robolectric tests for Room repositories and the v1→v2 migration, that alarms are set and a fired order becomes a notification; render tests that draw every screen to PNG (attached to each release) and fail if blank |
 | CI (GitHub Actions) | On every push: Python reference checks, golden freshness (`make_golden.py --check`), `:model:test`, `:app:testReleaseUnitTest`, `:app:lintRelease`, `:app:assembleRelease`, a check that the APK has no INTERNET permission, then a GitHub release with the APK on `main`. Emulator tests run locally, not in CI |
 
@@ -103,3 +103,4 @@ Each phase ends with tests run, a pass/fail report, known gaps listed, and a sto
 | 7. Two-week trial | You use it; we compare detected vs. confirmed nights and curve vs. your ratings, then fix what's off |
 | 8. Train ✓ (pulled forward, D-63) | 4-day upper/lower program with double progression, set logger and rest timer, swim/bike/run log and load, 70.3 plan with recovery weeks and taper, mobility routines, stand-down (MODEL.md §11) |
 | 9. Gut log | Stool type, symptoms, patterns against food |
+| 10. Stats hexagon ✓ (pulled forward, D-73) | Six corners scoring orders followed over the last 21 days, recalculated daily, with last week's shape for comparison (MODEL.md §12) |

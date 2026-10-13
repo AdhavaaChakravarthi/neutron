@@ -7,7 +7,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -452,6 +454,23 @@ class RenderTest {
         TodayScreen(base.copy(train = trainUi(thursday, debtH = 6.0).picture), TodayActions())
     }
 
+    // --- Stats hexagon ------------------------------------------------------------------------
 
+    @Test
+    @Config(qualifiers = "w393dp-h1800dp-xhdpi")
+    fun todayWithHexagon() = render("25-today-hexagon") {
+        val stored = history()
+        val base = ready(day.atTime(7, 40), stored)
+        val hex = com.adhavaa.commander.stats.statsPicture(day, stored.map { it.record }, emptySet(), base.stats.needH, fuelData(), trainData(day))
+        TodayScreen(base.copy(hexagon = hex), TodayActions())
+    }
+
+    @Test
+    @Config(qualifiers = "w393dp-h1500dp-xhdpi")
+    fun hexagonFirstWeek() = render("26-hexagon-first-week") {
+        val hex = com.adhavaa.commander.stats.statsPicture(day, history().map { it.record }.take(3), emptySet(), 8.0, null, null)
+        androidx.compose.foundation.layout.Column(
+            Modifier.fillMaxSize().background(Hud.bg).padding(14.dp),
+        ) { HexagonPanel(hex) }
+    }
 }
-
