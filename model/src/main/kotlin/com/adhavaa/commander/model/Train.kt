@@ -28,6 +28,8 @@ object TrainParams {
     const val TAPER_0 = 0.45
     /** ASSUMPTION. */
     const val MIN_SESSION = 15.0
+    /** D-77: swimming comes back once the trend weight is this far below the Fuel setup weight. Your goal. */
+    const val SWIM_PAUSE_KG = 13.0
     /** ASSUMPTION: a session rated 4 or below (CR-10) counts as easy. */
     const val EASY_RPE = 4
     /** ACSM 2009 rest: at least 2-3 min for core lifts, 1-2 min for assistance (midpoints, ASSUMPTION). */
@@ -137,25 +139,34 @@ enum class Intensity { EASY, QUALITY }
 /** A slot in the week (MODEL.md 11.3). [day] is ISO (Monday = 1). */
 data class Slot(val day: Int, val sport: Sport, val weight: Double, val base: Intensity, val build: Intensity, val buildOnly: Boolean = false)
 
+/** The week (MODEL.md 11.3, D-76). Lifting is Thursday to Sunday, so endurance sits on Monday to Wednesday. */
 val WEEK_SLOTS: List<Slot> = listOf(
-    Slot(1, Sport.SWIM, 1.0, Intensity.EASY, Intensity.EASY),
-    Slot(2, Sport.RUN, 0.8, Intensity.EASY, Intensity.EASY),
-    Slot(4, Sport.BIKE, 1.2, Intensity.QUALITY, Intensity.QUALITY),
-    Slot(5, Sport.SWIM, 1.0, Intensity.EASY, Intensity.QUALITY),
-    Slot(6, Sport.BIKE, 2.6, Intensity.EASY, Intensity.EASY),
-    Slot(6, Sport.RUN, 0.4, Intensity.EASY, Intensity.EASY, buildOnly = true),
-    Slot(7, Sport.RUN, 1.8, Intensity.EASY, Intensity.EASY),
+    Slot(1, Sport.BIKE, 1.2, Intensity.QUALITY, Intensity.QUALITY),
+    Slot(1, Sport.SWIM, 1.0, Intensity.EASY, Intensity.QUALITY),
+    Slot(2, Sport.RUN, 1.8, Intensity.EASY, Intensity.EASY),
+    Slot(3, Sport.SWIM, 1.0, Intensity.EASY, Intensity.EASY),
+    Slot(3, Sport.BIKE, 2.6, Intensity.EASY, Intensity.EASY),
+    Slot(3, Sport.RUN, 0.4, Intensity.EASY, Intensity.EASY, buildOnly = true),
 )
+
+/** The week's slots. With swimming paused (D-77), swim slots are dropped and their weight goes to the long ride. */
+fun weekSlots(build: Boolean, swim: Boolean): List<Slot> {
+    val slots = WEEK_SLOTS.filter { build || !it.buildOnly }
+    if (swim) return slots
+    val moved = slots.filter { it.sport == Sport.SWIM }.sumOf { it.weight }
+    val longRide = slots.filter { it.sport == Sport.BIKE }.maxBy { it.weight }
+    return slots.filter { it.sport != Sport.SWIM }.map { if (it === longRide) it.copy(weight = it.weight + moved) else it }
+}
 
 data class PlannedSession(val day: Int, val sport: Sport, val minutes: Double, val intensity: Intensity, val brick: Boolean = false)
 
 fun round5(x: Double): Double = floor(x / 5.0 + 0.5) * 5.0
 
-/** The week's planned sessions. */
-fun weekSessions(week: PlanWeek): List<PlannedSession> {
+/** The week's planned sessions; [swim] false while swimming is paused (D-77). */
+fun weekSessions(week: PlanWeek, swim: Boolean = true): List<PlannedSession> {
     if (week.minutes <= 0) return emptyList()
     val build = week.phase == Phase.BUILD || week.phase == Phase.TAPER
-    val slots = WEEK_SLOTS.filter { build || !it.buildOnly }
+    val slots = weekSlots(build, swim)
     val total = slots.sumOf { it.weight }
     return slots.map { s ->
         val intensity = when {
@@ -173,3 +184,13 @@ fun sessionLoad(minutes: Double, rpe: Double): Double = minutes * rpe
 /** Share of sessions rated easy, or null with none. */
 fun easyShare(rpes: List<Double>): Double? =
     if (rpes.isEmpty()) null else rpes.count { it <= TrainParams.EASY_RPE }.toDouble() / rpes.size
+
+/**
+ * The Monday after the trend first reaches [startWeightKg] - [pauseKg], or null (D-77). Once reached it stays reached:
+ * a later rebound doesn't pause swimming again.
+ */
+fun swimBackDay(trend: Map<java.time.LocalDate, Double>, startWeightKg: Double, pauseKg: Double?): java.time.LocalDate? {
+    if (pauseKg == null) return null
+    val hit = trend.entries.sortedBy { it.key }.firstOrNull { it.value <= startWeightKg - pauseKg + 1e-9 } ?: return null
+    return hit.key.plusDays(8L - hit.key.dayOfWeek.value)
+}

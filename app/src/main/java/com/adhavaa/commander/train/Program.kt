@@ -69,10 +69,10 @@ data class ProgramItem(
 /** A lifting day. [day] is ISO (Monday = 1). */
 data class LiftDay(val key: String, val label: String, val day: Int, val items: List<ProgramItem>)
 
-/** The 4-day upper/lower program (MODEL.md 11.1, D-64). */
+/** The 4-day upper/lower program (MODEL.md 11.1, D-64), Thursday to Sunday (D-76). */
 val PROGRAM: List<LiftDay> = listOf(
     LiftDay(
-        "LOWER_A", "Lower A", 1,
+        "LOWER_A", "Lower A", 4,
         listOf(
             ProgramItem("LA1", "Barbell_Squat", 3, 6, 8, large = true, main = true),
             ProgramItem("LA2", "Romanian_Deadlift", 3, 8, 10, large = true, main = true),
@@ -82,7 +82,7 @@ val PROGRAM: List<LiftDay> = listOf(
         ),
     ),
     LiftDay(
-        "UPPER_A", "Upper A", 2,
+        "UPPER_A", "Upper A", 5,
         listOf(
             ProgramItem("UA1", "Barbell_Bench_Press_-_Medium_Grip", 3, 6, 8, large = false, main = true),
             ProgramItem("UA2", "Bent_Over_Barbell_Row", 3, 8, 10, large = false, main = true),
@@ -93,7 +93,7 @@ val PROGRAM: List<LiftDay> = listOf(
         ),
     ),
     LiftDay(
-        "LOWER_B", "Lower B", 4,
+        "LOWER_B", "Lower B", 6,
         listOf(
             ProgramItem("LB1", "Barbell_Deadlift", 2, 5, 6, large = true, main = true),
             ProgramItem("LB2", "Split_Squat_with_Dumbbells", 3, 8, 10, large = false, main = true),
@@ -103,7 +103,7 @@ val PROGRAM: List<LiftDay> = listOf(
         ),
     ),
     LiftDay(
-        "UPPER_B", "Upper B", 5,
+        "UPPER_B", "Upper B", 7,
         listOf(
             ProgramItem("UB1", "Pullups", 3, 6, 8, large = false, main = true),
             ProgramItem("UB2", "Incline_Dumbbell_Press", 3, 8, 10, large = false, main = true),

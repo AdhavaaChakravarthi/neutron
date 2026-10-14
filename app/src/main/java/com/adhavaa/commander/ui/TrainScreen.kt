@@ -43,6 +43,7 @@ import com.adhavaa.commander.model.Intensity
 import com.adhavaa.commander.model.PlannedSession
 import com.adhavaa.commander.model.Sport
 import com.adhavaa.commander.train.DayPlan
+import com.adhavaa.commander.train.swimLine
 import com.adhavaa.commander.train.LiftTarget
 import com.adhavaa.commander.train.RECOVERY_STRETCH
 import com.adhavaa.commander.train.Routine
@@ -301,6 +302,7 @@ private fun PlanPanel(ui: TrainUi, onEdit: () -> Unit) {
         KeyValue("Race", s.raceDate?.format(DAY_FMT) ?: "Not set", if (s.raceDate != null) Hud.green else Hud.muted)
         KeyValue("Now / most per week", "${(s.currentMinutes / 60).fmt1()} h / ${(s.peakMinutes / 60).fmt1()} h")
         KeyValue("This week", p.week?.let { "${it.minutes.roundToInt()} min" + (if (it.capped) " (held back after a light week)" else "") } ?: "—")
+        KeyValue("Swimming", swimLine(p.swim, s.swimPauseKg, p.swimThisWeek), if (p.swimThisWeek) Hud.green else Hud.amber)
         PlanChart(ui, Modifier.fillMaxWidth().height(110.dp))
         Hint("Builds 8% a week, every fourth week lighter, a two-week taper before the race, and never more than 10% above your biggest recent week.")
         OutlinedButton(onClick = onEdit) { Text("EDIT PLAN") }

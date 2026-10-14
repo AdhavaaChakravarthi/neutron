@@ -100,11 +100,12 @@ On Today, Fuel adds the weigh-in order (15 min after waking; "Log weight" right 
 - **Session log.** Swim, bike, run or other, with minutes, distance, rating and a brick flag.
 - **This week.** Seven days with what each asks for and a tick when it's done.
 - **Load.** Minutes done against planned per sport, weekly load (rating × minutes), the 4-week easy share against 80%, and sets per muscle against ~10.
-- **Plan.** Race date, hours now and at most, this week's minutes, and a bar chart of every week to the race (dots for what you did). "Edit plan" changes it.
+- **Plan.** Race date, hours now and at most, swimming (paused until 13 kg down, or on), this week's minutes, and a bar chart of every week to the race (dots for what you did). "Edit plan" changes it.
+- **The week (D-76).** Lifting Thursday to Sunday; bike Monday, run Tuesday, long bike Wednesday. While swimming is paused (D-77) the plan shows how far the trend is from the mark, and the swim minutes go to the long ride.
 - **Lifts.** Every exercise in the program with its last session, best estimated 1RM and next target.
 - **Mobility player.** One hold at a time: name, side, a big countdown, how to do it, what's next. The screen stays on. It logs when done.
 
-On Today, Train adds the "Train" order after the groggy window, with today's session and an Open Train button, and a "Mobility" order 45 minutes before wind-down. Both tick themselves when logged. A "Train:" line joins the mission brief.
+On Today, Train adds the "Train" order after the groggy window, with today's session and an Open Train button, and a "Mobility" order 45 minutes before wind-down. Both tick themselves when logged. A "Train:" line joins the mission brief. On the day the trend first reaches 13 kg down, the Train order says swimming is back from Monday.
 
 ### Morning check-in (original plan)
 

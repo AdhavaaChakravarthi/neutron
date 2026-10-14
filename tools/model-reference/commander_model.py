@@ -772,35 +772,63 @@ def week_plan(i: int, v0: float, vp: float, race_week: int | None, actual: dict[
     return PlanWeek(i, m, phase, recovery, capped)
 
 
-# The week (MODEL.md 11.3): (ISO day, sport, weight, base intensity, build intensity, build only)
+# The week (MODEL.md 11.3, D-76): (ISO day, sport, weight, base intensity, build intensity, build only).
+# Lifting is Thursday to Sunday, so endurance sits on Monday to Wednesday.
 WEEK_SLOTS = [
-    (1, "SWIM", 1.0, "easy", "easy", False),
-    (2, "RUN", 0.8, "easy", "easy", False),
-    (4, "BIKE", 1.2, "quality", "quality", False),
-    (5, "SWIM", 1.0, "easy", "quality", False),
-    (6, "BIKE", 2.6, "easy", "easy", False),
-    (6, "RUN", 0.4, "easy", "easy", True),     # brick run off the long ride
-    (7, "RUN", 1.8, "easy", "easy", False),
+    (1, "BIKE", 1.2, "quality", "quality", False),
+    (1, "SWIM", 1.0, "easy", "quality", False),
+    (2, "RUN", 1.8, "easy", "easy", False),
+    (3, "SWIM", 1.0, "easy", "easy", False),
+    (3, "BIKE", 2.6, "easy", "easy", False),   # long ride
+    (3, "RUN", 0.4, "easy", "easy", True),     # brick run off the long ride
 ]
 MIN_SESSION = 15.0          # ASSUMPTION
+SWIM_PAUSE_KG = 13.0        # D-77: swimming comes back once the trend is this far below the setup weight
 
 
 def round5(x: float) -> float:
     return math.floor(x / 5.0 + 0.5) * 5.0
 
 
-def week_sessions(week: PlanWeek) -> list[tuple[int, str, float, str]]:
+def week_slots(build: bool, swim: bool) -> list[tuple[int, str, float, str, str, bool]]:
+    """The week's slots. With swimming paused (D-77), swim slots are dropped and their weight goes to the long ride."""
+    slots = [s_ for s_ in WEEK_SLOTS if build or not s_[5]]
+    if swim:
+        return slots
+    moved = sum(s_[2] for s_ in slots if s_[1] == "SWIM")
+    long_ride = max((s_ for s_ in slots if s_[1] == "BIKE"), key=lambda s_: s_[2])
+    out = []
+    for s_ in slots:
+        if s_[1] == "SWIM":
+            continue
+        day, sport, wgt, base_i, build_i, build_only = s_
+        out.append((day, sport, wgt + moved if s_ is long_ride else wgt, base_i, build_i, build_only))
+    return out
+
+
+def week_sessions(week: PlanWeek, swim: bool = True) -> list[tuple[int, str, float, str]]:
     """(day, sport, minutes, intensity) for a planned week."""
     if week.minutes <= 0:
         return []
     build = week.phase in ("BUILD", "TAPER")
-    slots = [s_ for s_ in WEEK_SLOTS if build or not s_[5]]
+    slots = week_slots(build, swim)
     total = sum(s_[2] for s_ in slots)
     out = []
     for day, sport, wgt, base_i, build_i, _ in slots:
         intensity = "easy" if week.recovery or week.phase == "AFTER" else (build_i if build else base_i)
         out.append((day, sport, max(MIN_SESSION, round5(week.minutes * wgt / total)), intensity))
     return out
+
+
+def swim_back_day(trend: dict[int, float], start_weight: float, pause_kg: float | None) -> int | None:
+    """First Monday after the trend first reaches start_weight - pause_kg (days as epoch days), or None.
+    Once reached it stays reached: a later rebound doesn't pause swimming again."""
+    if pause_kg is None:
+        return None
+    for d in sorted(trend):
+        if trend[d] <= start_weight - pause_kg + 1e-9:
+            return d + (8 - weekday(d))   # the next Monday (ISO weekday: Monday = 1)
+    return None
 
 
 def session_load(minutes: float, rpe: float) -> float:

@@ -6,6 +6,7 @@ import com.adhavaa.commander.train.RECOVERY_STRETCH
 import com.adhavaa.commander.train.StandDown
 import com.adhavaa.commander.train.TrainPicture
 import com.adhavaa.commander.train.dayLine
+import com.adhavaa.commander.train.kg
 import com.adhavaa.commander.train.liftDayFor
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -31,7 +32,7 @@ fun trainOrders(t: TrainPicture?, o: TodayOrders, fmt: (LocalDateTime) -> String
         )
         d.rest -> Triple(
             "Rest day.", "No lifting or endurance today. Mobility at ${fmt(mobilityTime(o))}.",
-            "One full rest day a week keeps 48 hours between the lower-body days and the long ride (an assumption, D-66).",
+            "Nothing is planned today, so your body gets a day to recover. Mobility still helps, at an easy stretch.",
         )
         else -> Triple(
             "Train.", dayLine(d) + if (d.eased) ". Sleep debt is high: easy only, one set fewer per lift." else ".",
@@ -40,7 +41,8 @@ fun trainOrders(t: TrainPicture?, o: TodayOrders, fmt: (LocalDateTime) -> String
                 "Finish hard sessions at least an hour before lights out (Stutz et al. 2019).",
         )
     }
-    list += Order(OrderKind.TRAIN, o.groggyUntil, null, title, detail, why)
+    val news = if (t.swimBackNews) " You're ${t.swim.pauseKg?.let { kg(it) } ?: "13"} kg down from your Fuel setup weight: swimming is back from Monday." else ""
+    list += Order(OrderKind.TRAIN, o.groggyUntil, null, title, detail + news, why)
     if (o.windDown.minusMinutes(MOBILITY_BEFORE_WIND_DOWN_MIN).isAfter(o.groggyUntil)) {
         list += Order(
             OrderKind.MOBILITY, mobilityTime(o), null, "Mobility.",
@@ -53,12 +55,11 @@ fun trainOrders(t: TrainPicture?, o: TodayOrders, fmt: (LocalDateTime) -> String
     return list
 }
 
-/** Reminder text that only needs settings: the program and week are fixed (D-66). */
+/** Reminder text that only needs settings: the program and week are fixed (D-76). */
 fun trainReminderText(s: TrainSettings, date: LocalDate): String {
     val lift = liftDayFor(date.dayOfWeek.value)
     return when {
-        date.dayOfWeek.value == 3 -> "Rest day. Mobility tonight."
-        lift != null -> "${lift.label} plus today's swim, bike or run. Details on the Train tab."
-        else -> "Endurance day. Details on the Train tab."
+        lift != null -> "${lift.label}. Details on the Train tab."
+        else -> "Bike, run or swim day. Details on the Train tab."
     }
 }

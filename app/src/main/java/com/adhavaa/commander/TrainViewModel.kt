@@ -15,7 +15,9 @@ import com.adhavaa.commander.train.liftTargets
 import com.adhavaa.commander.train.Routine
 import com.adhavaa.commander.train.SetRecord
 import com.adhavaa.commander.train.StandDown
+import com.adhavaa.commander.fuel.FuelData
 import com.adhavaa.commander.train.TrainData
+import com.adhavaa.commander.train.swimStatus
 import com.adhavaa.commander.train.TrainPicture
 import com.adhavaa.commander.train.Workout
 import com.adhavaa.commander.train.WorkoutKind
@@ -64,9 +66,14 @@ class TrainViewModel(private val app: Application) : AndroidViewModel(app) {
         }
     }.distinctUntilChanged()
 
+    // Swimming is paused until Fuel's trend reaches the mark (D-77); only weigh-ins and the setup weight matter here.
+    private val fuel: Flow<FuelData> = combine(c.settings.settings.map { it.fuel }, c.fuel.observeWeights()) { s, w ->
+        FuelData(s, w, emptyMap(), emptySet())
+    }.distinctUntilChanged()
+
     private val data: Flow<TrainData> = combine(
-        c.settings.settings.map { it.train }, c.train.observeWorkouts(), c.train.observeSets(), c.train.observeStandDowns(),
-    ) { s, w, sets, sd -> TrainData(s, w, sets, sd) }.distinctUntilChanged()
+        c.settings.settings.map { it.train }, c.train.observeWorkouts(), c.train.observeSets(), c.train.observeStandDowns(), fuel,
+    ) { s, w, sets, sd, fd -> TrainData(s, w, sets, sd, swimStatus(fd, s.swimPauseKg, LocalDate.now())) }.distinctUntilChanged()
 
     /** Sleep debt from the sleep picture, for easing training on high-debt days (MODEL.md 11.3). */
     private val debt: Flow<Double?> = combine(c.settings.settings, c.sleep.observeSleep(), c.sleep.observeSkipped()) { s, sleep, skipped ->

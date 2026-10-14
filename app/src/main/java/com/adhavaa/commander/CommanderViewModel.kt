@@ -13,6 +13,7 @@ import com.adhavaa.commander.fuel.totals
 import com.adhavaa.commander.stats.StatsPicture
 import com.adhavaa.commander.stats.statsPicture
 import com.adhavaa.commander.train.TrainData
+import com.adhavaa.commander.train.swimStatus
 import com.adhavaa.commander.train.TrainPicture
 import com.adhavaa.commander.train.trainPicture
 import com.adhavaa.commander.model.SleepKind
@@ -120,9 +121,10 @@ class CommanderViewModel(private val app: Application) : AndroidViewModel(app) {
         c.settings.settings.map { it.fuel }, c.fuel.observeWeights(), c.fuel.observeDailyKcal(), c.fuel.observeIncomplete(),
     ) { s, w, k, inc -> FuelData(s, w, k, inc) }.distinctUntilChanged()
 
+    // Swimming is paused until Fuel's trend reaches the mark (D-77), so Train reads the fuel data too.
     private val trainData: Flow<TrainData> = combine(
-        c.settings.settings.map { it.train }, c.train.observeWorkouts(), c.train.observeSets(), c.train.observeStandDowns(),
-    ) { t, w, sets, sd -> TrainData(t, w, sets, sd) }.distinctUntilChanged()
+        c.settings.settings.map { it.train }, c.train.observeWorkouts(), c.train.observeSets(), c.train.observeStandDowns(), fuelData,
+    ) { t, w, sets, sd, fd -> TrainData(t, w, sets, sd, swimStatus(fd, t.swimPauseKg, LocalDate.now())) }.distinctUntilChanged()
 
     private data class Extras(
         val detected: Pair<LocalDate, DetectedNight?>?,

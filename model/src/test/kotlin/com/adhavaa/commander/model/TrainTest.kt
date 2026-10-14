@@ -54,15 +54,17 @@ class TrainTest {
             assertEquals(at, Phase.valueOf(row[6]), week.phase)
             assertEquals("$at recovery", row[7] == "1", week.recovery)
             assertEquals("$at capped", row[8] == "1", week.capped)
-            val expected = if (row[9].isBlank()) emptyList() else row[9].split(" ")
-            val got = weekSessions(week)
-            assertEquals("$at sessions", expected.size, got.size)
-            for ((e, s) in expected.zip(got)) {
-                val (day, sport, minutes, intensity) = e.split(":")
-                assertEquals(at, day.toInt(), s.day)
-                assertEquals(at, Sport.valueOf(sport), s.sport)
-                near(at, minutes.toDouble(), s.minutes)
-                assertEquals(at, Intensity.valueOf(intensity.uppercase()), s.intensity)
+            for ((col, swim) in listOf(9 to true, 10 to false)) {
+                val expected = if (row[col].isBlank()) emptyList() else row[col].split(" ")
+                val got = weekSessions(week, swim)
+                assertEquals("$at sessions swim=$swim", expected.size, got.size)
+                for ((e, s) in expected.zip(got)) {
+                    val (day, sport, minutes, intensity) = e.split(":")
+                    assertEquals(at, day.toInt(), s.day)
+                    assertEquals(at, Sport.valueOf(sport), s.sport)
+                    near(at, minutes.toDouble(), s.minutes)
+                    assertEquals(at, Intensity.valueOf(intensity.uppercase()), s.intensity)
+                }
             }
         }
     }
@@ -83,5 +85,24 @@ class TrainTest {
         assertEquals(NextLoad(LoadAction.START, null), nextLoad(squat, emptyList()))
         val curl = Prescription(2, 8, 10, false, Equipment.DUMBBELL)
         assertEquals(NextLoad(LoadAction.UP, 22.0), nextLoad(curl, listOf(List(2) { LiftSet(20.0, 11) }, List(2) { LiftSet(20.0, 11) })))
+    }
+
+    @Test
+    fun swimmingComesBackTheMondayAfterTheMark() {
+        val monday = java.time.LocalDate.of(2026, 10, 12)
+        val trend = (0L until 180L).associate { i ->
+            monday.plusDays(i) to if (i < 140) 95.0 - 0.1 * i else 82.0 + 0.05 * (i - 140)
+        }
+        val back = swimBackDay(trend, 95.0, TrainParams.SWIM_PAUSE_KG)!!
+        assertEquals(java.time.DayOfWeek.MONDAY, back.dayOfWeek)
+        assertTrue(back.isAfter(monday.plusDays(130)) && !back.isAfter(monday.plusDays(137)))
+        assertNull(swimBackDay(mapOf(monday to 90.0), 95.0, 13.0))
+        assertNull(swimBackDay(mapOf(monday to 80.0), 95.0, null))
+        // Paused: no swims, and the long ride carries their minutes.
+        val week = weekPlan(16, 300.0, 480.0, 24, emptyMap())
+        val off = weekSessions(week, swim = false)
+        assertTrue(off.none { it.sport == Sport.SWIM })
+        assertTrue(off.all { it.day in 1..3 } && weekSessions(week).all { it.day in 1..3 })
+        assertTrue(off.filter { it.sport == Sport.BIKE }.maxOf { it.minutes } > weekSessions(week).filter { it.sport == Sport.BIKE }.maxOf { it.minutes })
     }
 }

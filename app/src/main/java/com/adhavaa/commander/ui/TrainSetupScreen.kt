@@ -40,7 +40,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.time.temporal.ChronoUnit
 
-/** Train's plan settings: race date, weekly minutes now and at most. The lifting days are fixed (D-66). */
+/** Train's plan settings: race date, weekly minutes now and at most, and the swimming pause. The week is fixed (D-76). */
 @Composable
 fun TrainSetupScreen(current: TrainSettings, today: LocalDate, onSave: (TrainSettings) -> Unit, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
@@ -50,6 +50,7 @@ fun TrainSetupScreen(current: TrainSettings, today: LocalDate, onSave: (TrainSet
     var race by rememberSaveable { mutableStateOf(current.raceDate) }
     var now by rememberSaveable { mutableStateOf(numText(current.currentMinutes / 60.0)) }
     var most by rememberSaveable { mutableStateOf(numText(current.peakMinutes / 60.0)) }
+    var swimPause by rememberSaveable { mutableStateOf(current.swimPauseKg) }
     val nowH = parseNumber(now)?.takeIf { it in 0.5..25.0 }
     val mostH = parseNumber(most)?.takeIf { it in 1.0..30.0 }
     val raceOk = race == null || race!!.isAfter(today)
@@ -120,13 +121,24 @@ fun TrainSetupScreen(current: TrainSettings, today: LocalDate, onSave: (TrainSet
                 }
                 Hint(
                     "Week one starts from what you do now and grows 8% a week, every fourth week lighter, up to the most. " +
-                        "Lifting is 4 days on top: Lower A Mon, Upper A Tue, Lower B Thu, Upper B Fri.",
+                        "Set \"now\" to what you really do, so the first weeks fit you. Bike Monday, run Tuesday, long " +
+                        "bike Wednesday; lifting Thursday to Sunday: Lower A, Upper A, Lower B, Upper B.",
+                )
+            }
+        }
+        item {
+            HudPanel(title = "Swimming", subtitle = "Paused until your Fuel trend weight is down by") {
+                Choices(listOf(13.0, 15.0, null), { it == swimPause }, { it?.let { kg -> "${kg.toInt()} kg" } ?: "Swim now" }, { swimPause = it })
+                Hint(
+                    if (swimPause == null) "Swims are in the plan on Monday and Wednesday."
+                    else "Until then the swim minutes go to Wednesday's long ride. Swimming comes back the Monday after " +
+                        "your trend first reaches the mark, measured from your Fuel setup weight.",
                 )
             }
         }
         item {
             HudButton(if (first) "Start Train" else "Save", {
-                onSave(current.copy(raceDate = race, currentMinutes = nowH!! * 60.0, peakMinutes = mostH!! * 60.0))
+                onSave(current.copy(raceDate = race, currentMinutes = nowH!! * 60.0, peakMinutes = mostH!! * 60.0, swimPauseKg = swimPause))
                 onBack()
             }, enabled = ok)
         }

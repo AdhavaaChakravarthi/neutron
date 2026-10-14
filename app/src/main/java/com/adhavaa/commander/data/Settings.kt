@@ -92,6 +92,8 @@ data class TrainSettings(
     val currentMinutes: Double = DEFAULT_CURRENT_MIN,
     val peakMinutes: Double = DEFAULT_PEAK_MIN,
     val swaps: Map<String, String> = emptyMap(),
+    /** Swimming paused until the Fuel trend is this many kg below the Fuel setup weight; null = swimming on (D-77). */
+    val swimPauseKg: Double? = com.adhavaa.commander.model.TrainParams.SWIM_PAUSE_KG,
 ) {
     val setUp: Boolean get() = start != null
 

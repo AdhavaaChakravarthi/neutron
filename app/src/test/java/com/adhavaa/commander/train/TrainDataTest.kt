@@ -12,6 +12,7 @@ import com.adhavaa.commander.model.ordersFor
 import com.adhavaa.commander.orders.CommandData
 import com.adhavaa.commander.orders.OrderKind
 import com.adhavaa.commander.orders.trainOrders
+import com.adhavaa.commander.orders.trainReminderText
 import com.adhavaa.commander.orders.upcomingReminders
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -66,33 +67,77 @@ class TrainDataTest {
             assertTrue("$m on ${days[m]}", (days[m]?.size ?: 0) >= 2)
             assertTrue("$m ${sets[m]} sets", sets.getValue(m) in 5.0..13.0)
         }
-        assertEquals(listOf(1, 2, 4, 5), PROGRAM.map { it.day })
+        assertEquals(listOf(4, 5, 6, 7), PROGRAM.map { it.day })
         assertEquals(16, RECOVERY_STRETCH.steps().size)
         assertEquals(480, RECOVERY_STRETCH.totalSeconds)
         assertEquals(270, WARM_UP.totalSeconds)
     }
 
     @Test
-    fun mondayIsLowerAAndAnEasySwim() {
+    fun enduranceMondayToWednesdayLiftingThursdayToSunday() {
         val p = trainPicture(data(), monday, monday, debtH = 1.0)
         assertTrue(p.setUp)
         assertEquals(0, p.week!!.index)
         assertEquals(Phase.BASE, p.week!!.phase)
-        assertEquals("Lower A", p.day.lift!!.label)
-        assertEquals(listOf(Sport.SWIM), p.day.sessions.map { it.sport })
-        assertEquals("Lower A · Swim 35 min easy", dayLine(p.day))
+        // Swimming is paused by default (D-77) and Fuel isn't set up here, so no swims.
+        assertFalse(p.swimThisWeek)
+        assertNull(p.day.lift)
+        assertEquals("Bike 45 min quality", dayLine(p.day))
+        assertEquals("Run 70 min easy", dayLine(p.days[1]))
+        assertEquals("Bike 180 min easy", dayLine(p.days[2]))
+        assertEquals(listOf("Lower A", "Upper A", "Lower B", "Upper B"), p.days.drop(3).map { dayLine(it) })
+        assertTrue(p.days.none { it.rest })
+        assertTrue(p.days.flatMap { it.sessions }.none { it.sport == Sport.SWIM })
         assertEquals(24, p.weeksToRace)
-        assertTrue(p.days[2].rest)
-        assertEquals("Rest day", dayLine(p.days[2]))
         assertEquals(26, p.plan.size)
+        // With swimming on, Monday and Wednesday gain a swim and the long ride shrinks.
+        val on = trainPicture(data(t = settings.copy(swimPauseKg = null)), monday, monday, debtH = 1.0)
+        assertEquals(listOf(Sport.BIKE, Sport.SWIM), on.day.sessions.map { it.sport })
+        assertTrue(on.days[2].sessions.any { it.sport == Sport.SWIM })
+        assertTrue(on.days[2].sessions.first { it.sport == Sport.BIKE }.minutes < 180.0)
+    }
+
+    @Test
+    fun swimmingComesBackTheMondayAfterThirteenKgDown() {
+        val start = monday.minusDays(100)
+        val fs = com.adhavaa.commander.data.FuelSettings(
+            male = true, birthYear = 2004, heightCm = 178.0, startWeightKg = 95.0, start = start,
+        )
+        val weighs = (0L..180L).map { com.adhavaa.commander.model.WeighIn(start.plusDays(it), 95.0 - 0.1 * it) }
+        val fuel = com.adhavaa.commander.fuel.FuelData(fs, weighs, emptyMap(), emptySet())
+        val st = swimStatus(fuel, 13.0, monday)
+        assertTrue("status $st", st.tracked && st.from != null)
+        val mark = st.markDay!!
+        val from = st.from!!
+        assertEquals(java.time.DayOfWeek.MONDAY, from.dayOfWeek)
+        assertTrue("mark $mark from $from", from.isAfter(mark) && !from.isAfter(mark.plusDays(7)))
+        assertTrue(fuel.trend().getValue(mark) <= 82.0 + 1e-9)
+        val d = data().copy(swim = st)
+        assertFalse("before", d.swimOn(mondayOf(mark)))
+        assertTrue("after", d.swimOn(from))
+        val back = trainPicture(d, from, from, null)
+        assertTrue("back ${back.day}", back.day.sessions.any { it.sport == Sport.SWIM })
+        assertEquals("Back since " + from.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.getDefault())),
+            swimLine(back.swim, 13.0, back.swimThisWeek))
+        // The day the trend reaches the mark, the Train order says so.
+        val news = trainPicture(d, mark, mark, null)
+        assertTrue("news ${news.swim} ${news.today}", news.swimBackNews)
+        val o = trainOrders(news, ordersFor(mark, UsualSchedule(LocalTime.of(23, 30), LocalTime.of(7, 30)), 8.0), fmt).first { it.kind == OrderKind.TRAIN }
+        assertTrue(o.detail, o.detail.contains("swimming is back from Monday"))
+        // Earlier, the plan shows how far there is to go; without Fuel it says so.
+        val early = swimStatus(fuel.copy(weighIns = weighs.take(40)), 13.0, monday)
+        assertNull(early.from)
+        assertTrue(swimLine(early, 13.0, false), swimLine(early, 13.0, false).startsWith("Paused · "))
+        assertEquals("Paused until 13 kg down · set up Fuel to track it", swimLine(swimStatus(null, 13.0, monday), 13.0, false))
+        assertEquals("On", swimLine(swimStatus(fuel, null, monday), null, true))
     }
 
     @Test
     fun highSleepDebtEasesTheDay() {
-        val thu = monday.plusDays(3)
-        val p = trainPicture(data(), thu, thu, debtH = 6.0)
+        val p = trainPicture(data(), monday, monday, debtH = 6.0)
         assertTrue(p.day.eased)
-        assertTrue(p.day.sessions.all { it.intensity == Intensity.EASY })
+        assertTrue(p.day.sessions.isNotEmpty() && p.day.sessions.all { it.intensity == Intensity.EASY })
+        val thu = monday.plusDays(3)
         assertEquals(2, p.day.setsFor(PROGRAM[2].items[1]))
         assertEquals(1, p.day.setsFor(PROGRAM[2].items[0]))
         assertFalse(trainPicture(data(), thu, thu, debtH = 4.0).day.eased)
@@ -143,11 +188,12 @@ class TrainDataTest {
 
     @Test
     fun weekTotalsLoadAndMuscles() {
-        val (w, s) = lift(1, monday, listOf(8, 8, 8))
+        val thursday = monday.plusDays(3)
+        val (w, s) = lift(1, thursday, listOf(8, 8, 8))
         val swim = Workout(2, monday, WorkoutKind.SWIM, "Swim", true, 40.0, 1.5, 3.0, "", false)
         val bike = Workout(3, monday.minusDays(2), WorkoutKind.BIKE, "Bike", true, 90.0, 30.0, 6.0, "", false)
         val d = data(listOf(w, swim, bike), s)
-        val p = trainPicture(d, monday, monday, null) { exercises[it] }
+        val p = trainPicture(d, thursday, thursday, null) { exercises[it] }
         assertEquals(40.0, p.weekDone[Sport.SWIM]!!, 0.0)
         assertNull(p.weekDone[Sport.BIKE])
         assertEquals(60 * 7.0 + 40 * 3.0, p.weekLoad, 1e-9)
@@ -181,10 +227,12 @@ class TrainDataTest {
             for (b in banned) assertFalse("${o.kind} mentions '$b'", text.contains(b))
         }
         val base = Settings(onboarded = true, bedtime = LocalTime.of(23, 30), wake = LocalTime.of(7, 30), targetWake = null, needMinutes = 480)
-        val at = monday.atTime(6, 0)
+        val at = monday.plusDays(3).atTime(6, 0)
         assertFalse(upcomingReminders(CommandData(base, emptyList(), emptySet()), at, fmt).any { it.kind == OrderKind.TRAIN })
         val withTrain = upcomingReminders(CommandData(base.copy(train = settings), emptyList(), emptySet()), at, fmt)
         assertTrue(withTrain.any { it.kind == OrderKind.TRAIN && it.text.startsWith("Lower A") })
+        assertEquals("Bike, run or swim day. Details on the Train tab.", trainReminderText(settings, monday))
+        assertEquals("Upper B. Details on the Train tab.", trainReminderText(settings, monday.plusDays(6)))
         assertTrue(withTrain.any { it.kind == OrderKind.MOBILITY })
     }
 

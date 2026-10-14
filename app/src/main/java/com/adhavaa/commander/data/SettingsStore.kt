@@ -56,6 +56,8 @@ class SettingsStore(context: Context) {
         val trainCurrent = doublePreferencesKey("train_current_min")
         val trainPeak = doublePreferencesKey("train_peak_min")
         val trainSwaps = stringSetPreferencesKey("train_swaps")
+        /** Kg to lose before swimming returns; 0 means swimming is on (D-77). Absent means the default. */
+        val trainSwimPause = doublePreferencesKey("train_swim_pause_kg")
     }
 
     private fun train(p: Preferences): TrainSettings = TrainSettings(
@@ -63,6 +65,7 @@ class SettingsStore(context: Context) {
         raceDate = p[Keys.trainRace]?.let(LocalDate::ofEpochDay),
         currentMinutes = p[Keys.trainCurrent] ?: TrainSettings.DEFAULT_CURRENT_MIN,
         peakMinutes = p[Keys.trainPeak] ?: TrainSettings.DEFAULT_PEAK_MIN,
+        swimPauseKg = p[Keys.trainSwimPause].let { if (it == null) TrainSettings().swimPauseKg else it.takeIf { kg -> kg > 0.0 } },
         swaps = p[Keys.trainSwaps].orEmpty().mapNotNull { e ->
             val i = e.indexOf('=')
             if (i <= 0) null else e.substring(0, i) to e.substring(i + 1)
@@ -184,6 +187,7 @@ class SettingsStore(context: Context) {
             if (t.raceDate == null) it.remove(Keys.trainRace) else it[Keys.trainRace] = t.raceDate.toEpochDay()
             it[Keys.trainCurrent] = t.currentMinutes
             it[Keys.trainPeak] = maxOf(t.peakMinutes, t.currentMinutes)
+            it[Keys.trainSwimPause] = t.swimPauseKg ?: 0.0
         }
     }
 

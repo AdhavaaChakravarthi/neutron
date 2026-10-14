@@ -392,7 +392,7 @@ class RenderTest {
                 }
             }
             if (d != today) {
-                for (s in weekSessions(week).filter { it.day == d.dayOfWeek.value }) {
+                for (s in weekSessions(week, swim = false).filter { it.day == d.dayOfWeek.value }) {
                     workouts += Workout(
                         id++, d, WorkoutKind.of(s.sport), if (s.brick) "Brick run" else s.sport.label, true, s.minutes - 5, null,
                         if (s.intensity == Intensity.QUALITY) 6.0 else 3.0, "", s.brick, startMs = id,
@@ -402,7 +402,7 @@ class RenderTest {
             }
             d = d.plusDays(1)
         }
-        return TrainData(trainSettings, workouts, sets, emptyMap())
+        return TrainData(trainSettings, workouts, sets, emptyMap(), com.adhavaa.commander.train.SwimStatus(13.0, null, null, 9.4, tracked = true))
     }
 
     private fun trainUi(today: LocalDate, debtH: Double? = 1.5, openLift: Boolean = false, s: TrainSettings = trainSettings): TrainUi {

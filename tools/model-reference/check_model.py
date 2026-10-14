@@ -15,7 +15,8 @@ from commander_model import (KCAL_PER_KG, MAX_STEP_KCAL, PLAN_GROWTH, STATS, Epi
                               TpmParams, detect_rest_period, e1rm, easy_share, estimate_need, fuel_check_ins, hexagon,
                               kss_from_alertness,
                               losing_too_fast, next_load, personal_acrophase, plan_base, resting_energy, simulate,
-                              sleep_debt, targets_on, trend_series, week_plan, week_sessions)
+                              sleep_debt, swim_back_day, targets_on, trend_series, week_plan, week_sessions, weekday,
+                              WEEK_SLOTS)
 
 PRM = TpmParams()
 failures: list[str] = []
@@ -250,15 +251,34 @@ for _ in range(200):
                 taper_ok = taper_ok and 0.41 <= cut <= 0.60
     for w in weeks:
         if w.minutes >= 200:
-            total = sum(m for _, _, m, _ in week_sessions(w))
-            sums_ok = sums_ok and abs(total - w.minutes) <= 0.1 * w.minutes
+            for swim in (True, False):
+                total = sum(m for _, _, m, _ in week_sessions(w, swim))
+                sums_ok = sums_ok and abs(total - w.minutes) <= 0.1 * w.minutes
 check("Weekly plan grows at most 8%", worst_growth <= PLAN_GROWTH - 1.0 + 1e-9, f"largest week-on-week rise {worst_growth * 100:.1f}% in 200 random plans")
 check("Recovery weeks are lighter", recovery_ok, "every fourth week below the week before it")
 check("Taper cuts volume 41-60%", taper_ok, "both taper weeks against the last pre-taper base (Bosquet 2007)")
 missed = week_plan(4, 300, 480, None, {1: 0.0, 2: 0.0, 3: 0.0})
 check("A missed stretch restarts gently", missed.capped and abs(missed.minutes - 150) < 1e-9,
       f"three weeks off -> next week {missed.minutes:.0f} min (half of the usual 300), not the planned {week_plan(4, 300, 480, None, {}).minutes:.0f}")
-check("Sessions add up to the week", sums_ok, "within 10% after rounding to 5 min and the 15-min minimum")
+check("Sessions add up to the week", sums_ok, "within 10% after rounding to 5 min and the 15-min minimum, swimming on or paused")
+check("Endurance stays on Monday to Wednesday", all(1 <= s_[0] <= 3 for s_ in WEEK_SLOTS),
+      "lifting has Thursday to Sunday (D-76)")
+wk = week_plan(16, 300, 480, 24, {})
+on, off = week_sessions(wk, True), week_sessions(wk, False)
+long_on = max(m for _, sp, m, _ in on if sp == "BIKE")
+long_off = max(m for _, sp, m, _ in off if sp == "BIKE")
+check("Paused swimming moves its minutes to the long ride",
+      not any(sp == "SWIM" for _, sp, _, _ in off) and long_off > long_on
+      and abs(sum(m for *_, m, _ in off) - sum(m for *_, m, _ in on)) <= 10,
+      f"long ride {long_on:.0f} -> {long_off:.0f} min, week total unchanged within rounding")
+mon = 20738   # Monday 2026-10-12
+down = {mon + i: 95.0 - 0.1 * i for i in range(140)}
+down.update({mon + 140 + i: 82.0 + 0.05 * i for i in range(40)})   # rebound after reaching the mark
+back = swim_back_day(down, 95.0, 13.0)
+check("Swimming returns the Monday after 13 kg down, and stays",
+      back is not None and weekday(back) == 1 and 0 < back - (mon + 130) <= 7 and swim_back_day({mon: 90.0}, 95.0, 13.0) is None
+      and swim_back_day({mon: 90.0}, 95.0, None) is None,
+      f"mark reached on day 130, swimming from day {back - mon if back else None}; a later rebound doesn't undo it")
 check("Easy share counts sessions rated 4 or below", easy_share([2, 3, 4, 6, 3]) == 0.8 and easy_share([]) is None, "4 of 5 -> 80%")
 
 # --- Stats hexagon (MODEL.md section 12) -------------------------------------

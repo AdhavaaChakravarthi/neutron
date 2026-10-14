@@ -1,6 +1,7 @@
 package com.adhavaa.commander.train
 
 import com.adhavaa.commander.data.TrainSettings
+import com.adhavaa.commander.fuel.FuelData
 import com.adhavaa.commander.model.Equipment
 import com.adhavaa.commander.model.Intensity
 import com.adhavaa.commander.model.LiftSet
@@ -12,6 +13,7 @@ import com.adhavaa.commander.model.e1rm
 import com.adhavaa.commander.model.easyShare
 import com.adhavaa.commander.model.nextLoad
 import com.adhavaa.commander.model.sessionLoad
+import com.adhavaa.commander.model.swimBackDay
 import com.adhavaa.commander.model.weekPlan
 import com.adhavaa.commander.model.weekSessions
 import java.time.DayOfWeek
@@ -71,12 +73,41 @@ enum class StandDown(val label: String) { PAIN("Pain"), ILLNESS("Illness"), EXHA
 /** Sleep debt at which training eases off (the High band, MODEL.md 11.3). */
 const val HIGH_DEBT_H = 5.0
 
+/**
+ * Where the swimming pause stands (D-77): the day the trend first reached the mark, the Monday swimming returns, and
+ * kg still to go on the latest trend. [tracked] is false without a pause or without Fuel's weigh-ins.
+ */
+data class SwimStatus(
+    val pauseKg: Double? = null,
+    val markDay: LocalDate? = null,
+    val from: LocalDate? = null,
+    val kgToGo: Double? = null,
+    val tracked: Boolean = false,
+)
+
+/** The swimming pause from Fuel's trend and setup weight (MODEL.md 11.3). */
+fun swimStatus(fuel: FuelData?, pauseKg: Double?, today: LocalDate): SwimStatus {
+    if (pauseKg == null) return SwimStatus()
+    if (fuel == null || !fuel.settings.setUp) return SwimStatus(pauseKg)
+    val start = fuel.settings.startWeightKg!!
+    val mark = start - pauseKg
+    val trend = fuel.trend()
+    val from = swimBackDay(trend, start, pauseKg)
+    val hit = trend.entries.firstOrNull { it.value <= mark + 1e-9 }?.key
+    val latest = trend.floorEntry(today)?.value
+    return SwimStatus(pauseKg, hit, from, latest?.let { maxOf(0.0, it - mark) }, tracked = true)
+}
+
 data class TrainData(
     val settings: TrainSettings,
     val workouts: List<Workout>,
     val sets: List<SetRecord>,
     val standDowns: Map<LocalDate, StandDown>,
-)
+    val swim: SwimStatus = SwimStatus(),
+) {
+    /** Swimming is in the plan for the week starting [monday] (D-77): no pause, or the pause has ended. */
+    fun swimOn(monday: LocalDate): Boolean = settings.swimPauseKg == null || (swim.from != null && !monday.isBefore(swim.from))
+}
 
 fun mondayOf(d: LocalDate): LocalDate = d.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 
@@ -136,7 +167,12 @@ data class TrainPicture(
     val setsPerMuscle: Map<String, Double>,
     val plan: List<PlanWeek>,
     val actual: Map<Int, Double>,
+    /** The swimming pause (D-77) and whether this week's plan has swims. */
+    val swim: SwimStatus = SwimStatus(),
+    val swimThisWeek: Boolean = true,
 ) {
+    /** The trend reached the swim mark today: swimming is back from Monday. */
+    val swimBackNews: Boolean get() = swim.markDay == today && swim.from != null
     val weeksToRace: Int? get() = raceWeek?.let { r -> week?.let { r - it.index } }
 
     fun done(date: LocalDate): List<Workout> = doneOn[date].orEmpty()
@@ -154,10 +190,10 @@ data class TrainPicture(
     fun mobilityDone(date: LocalDate): Boolean = done(date).any { it.kind == WorkoutKind.MOBILITY }
 }
 
-private fun dayPlan(date: LocalDate, week: PlanWeek?, standDown: StandDown?, eased: Boolean): DayPlan {
+private fun dayPlan(date: LocalDate, week: PlanWeek?, standDown: StandDown?, eased: Boolean, swim: Boolean): DayPlan {
     val iso = date.dayOfWeek.value
     if (standDown != null) return DayPlan(date, null, emptyList(), standDown, eased)
-    val sessions = week?.let { w -> weekSessions(w).filter { it.day == iso } }.orEmpty()
+    val sessions = week?.let { w -> weekSessions(w, swim).filter { it.day == iso } }.orEmpty()
         .map { if (eased) it.copy(intensity = Intensity.EASY) else it }
     return DayPlan(date, liftDayFor(iso), sessions, null, eased)
 }
@@ -177,7 +213,7 @@ fun dayPlans(data: TrainData, from: LocalDate, to: LocalDate, today: LocalDate):
     while (!d.isAfter(to)) {
         val i = weekIndex(start, d)
         val week = weeks.getOrPut(i) { weekPlan(i, s.currentMinutes, s.peakMinutes, raceWeek, actual) }
-        out += dayPlan(d, week, data.standDowns[d], eased = false)
+        out += dayPlan(d, week, data.standDowns[d], eased = false, swim = data.swimOn(mondayOf(d)))
         d = d.plusDays(1)
     }
     return out
@@ -239,14 +275,15 @@ fun trainPicture(
     val raceWeek = if (start != null) s.raceDate?.let { weekIndex(start, it) } else null
     val idx = start?.let { weekIndex(it, date) }
     val week = idx?.let { weekPlan(it, s.currentMinutes, s.peakMinutes, raceWeek, actual) }
+    val swimWeek = data.swimOn(weekStart)
     val days = (0L..6L).map { k ->
         val d = weekStart.plusDays(k)
-        dayPlan(d, week.takeIf { start != null && !d.isBefore(start) }, data.standDowns[d], eased && d == today)
+        dayPlan(d, week.takeIf { start != null && !d.isBefore(start) }, data.standDowns[d], eased && d == today, swimWeek)
     }
     val doneOn = data.workouts.groupBy { it.date }
     val inWeek = data.workouts.filter { !it.date.isBefore(weekStart) && !it.date.isAfter(weekStart.plusDays(6)) && it.ended }
     val weekDone = inWeek.filter { it.kind.sport != null }.groupBy { it.kind.sport!! }.mapValues { (_, l) -> l.sumOf { it.minutes } }
-    val weekPlanned = week?.let { w -> weekSessions(w).groupBy { it.sport }.mapValues { (_, l) -> l.sumOf { it.minutes } } }.orEmpty()
+    val weekPlanned = week?.let { w -> weekSessions(w, swimWeek).groupBy { it.sport }.mapValues { (_, l) -> l.sumOf { it.minutes } } }.orEmpty()
     val fourWeeks = data.workouts.filter {
         it.kind.sport != null && it.ended && it.rpe != null && !it.date.isBefore(today.minusDays(27)) && !it.date.isAfter(today)
     }
@@ -274,6 +311,8 @@ fun trainPicture(
         setsPerMuscle = setsPerMuscle(data, date, exercises),
         plan = planWeeks,
         actual = actual,
+        swim = data.swim,
+        swimThisWeek = swimWeek,
     )
 }
 

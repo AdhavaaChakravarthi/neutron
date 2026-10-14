@@ -181,7 +181,7 @@ def files() -> dict[str, str]:
             rows.append(f"{p.sets},{p.lo},{p.hi},{f(p.large)},{p.equipment},{enc},{action},{f(nw)}")
     out["train_progression.csv"] = "\n".join(rows) + "\n"
 
-    rows = ["case,v0,vp,race,week,minutes,phase,recovery,capped,sessions"]
+    rows = ["case,v0,vp,race,week,minutes,phase,recovery,capped,sessions,sessions_no_swim"]
     cases_t = {
         "race24": (300.0, 480.0, 24, {}),
         "norace": (240.0, 600.0, None, {}),
@@ -192,8 +192,9 @@ def files() -> dict[str, str]:
         for i in range(0, 34):
             wk = week_plan(i, v0, vp, race, actual)
             ses = " ".join(f"{d}:{s_}:{f(m)}:{x}" for d, s_, m, x in week_sessions(wk))
+            dry = " ".join(f"{d}:{s_}:{f(m)}:{x}" for d, s_, m, x in week_sessions(wk, swim=False))
             rows.append(f"{name},{f(v0)},{f(vp)},{'' if race is None else race},{i},{f(wk.minutes)},{wk.phase},"
-                        f"{f(wk.recovery)},{f(wk.capped)},{ses}")
+                        f"{f(wk.recovery)},{f(wk.capped)},{ses},{dry}")
     out["train_plan.csv"] = "\n".join(rows) + "\n"
     # --- stats hexagon ----------------------------------------------------
     rows = ["case,need,sri,days," + ",".join(c.lower() for c in STATS) + ",counted,overall"]

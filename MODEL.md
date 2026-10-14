@@ -105,7 +105,7 @@ Implemented in `plan_day` / `plan_for_schedule` (Python) and `planDay` / `planFo
 
 `python3 tools/model-reference/check_model.py` currently reports:
 
-- **Pass (40):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check; the 10 fuel checks in §10; the 11 Train checks in §11.5; the 6 hexagon checks in §12.
+- **Pass (43):** steady state reached; groggy on waking; single peak near acrophase; noon KSS in "alert" range; restriction lowers alertness; late sleeper's curve shifts by the expected 3 h; four debt checks; two need checks; detection within 15 min despite a night-time check; the 10 fuel checks in §10; the 14 Train checks in §11.5; the 6 hexagon checks in §12.
 - **Known limitations (3, reported every run, don't fail the build):** no afternoon dip/second wind; no accumulation across short nights; one recovery night fully restores. Decided in D-25 and D-26.
 
 `python3 tools/model-reference/make_golden.py` writes golden vectors (curves for three schedules, debt, need, acrophase, detector, daily orders for six schedules, real-night histories, trend weight and check-ins for four fuel cases, Train's 1RM estimates, progression decisions and four endurance plans with their sessions, and hexagon scores with the 21-night regularity index). The Kotlin `:model` tests must match them to 1e-6, and CI runs `make_golden.py --check` so the goldens can't drift from the reference. A deliberate change to an inertia constant or the debt allowance makes the Kotlin tests fail, so they do bite.
@@ -248,17 +248,21 @@ Week 0 is the week you set up, Monday to Sunday.
 - **No sudden jumps (rule of command 3).** A week's plan is never more than 110% of your biggest week in the last three completed weeks. If that falls below half of V0 (after illness or a break), the cap restarts at half of V0 (**ASSUMPTIONS**).
 - **Phases** by weeks to race (race week = 0): Base 13 or more, Build 2–12, Taper 1 and 0, After once the race is past, Base with no race date. Recovery weeks are always easy. The taper keeps Build's sessions and intensity.
 
-**The week.** Planned minutes are spread over a fixed week by weight (**ASSUMPTIONS**, D-66). Each session is rounded to 5 minutes, at least 15.
+**The week.** Planned minutes are spread over a fixed week by weight (**ASSUMPTIONS**, D-76). Lifting has Thursday to Sunday, so all endurance is on Monday to Wednesday and there is no full rest day: your choice (D-76). Each session is rounded to 5 minutes, at least 15.
 
 | Day | Lifting | Endurance (weight) | Base | Build |
 |---|---|---|---|---|
-| Mon | Lower A | Swim (1.0) | easy | easy |
-| Tue | Upper A | Run (0.8) | easy | easy (your fruit day) |
-| Wed | — | rest, mobility | | |
-| Thu | Lower B | Bike (1.2) | quality | quality |
-| Fri | Upper B | Swim (1.0) | easy | quality |
-| Sat | — | Long bike (2.6), plus brick run (0.4) in Build | easy | easy + brick |
-| Sun | — | Long run (1.8) | easy | easy |
+| Mon | — | Bike (1.2), swim (1.0) | quality, easy | quality, quality |
+| Tue | — | Run (1.8) | easy | easy (your fruit day) |
+| Wed | — | Long bike (2.6), swim (1.0), plus brick run (0.4) in Build | easy | easy + brick |
+| Thu | Lower A | — | | |
+| Fri | Upper A | — | | |
+| Sat | Lower B | — | | |
+| Sun | Upper B | — | | |
+
+**Swimming paused (D-77).** Until your Fuel trend weight is 13 kg below your Fuel setup weight, swims are left out and their weight goes to the long ride, so the week's minutes stay the same. Swimming comes back from the Monday after the trend first reaches the mark, and stays back if the trend rises again. Without Fuel set up there's no trend, so swimming stays paused until you switch it on in Train setup. The 13 kg is your goal, not a health threshold. With swimming paused, the long ride is the biggest session of the week; at the default 480-minute peak it reaches about 4.5 hours, so lower the peak in setup if that's too long.
+
+**Lifting days.** Lower A Thursday, Upper A Friday, Lower B Saturday, Upper B Sunday. Alternating lower and upper keeps a day off between a muscle's two sessions, so each muscle is still trained twice a week [32].
 
 "Quality" means intervals with no more than about a fifth of the session hard, which keeps the week near 80% easy [36].
 
@@ -283,10 +287,13 @@ ACSM: flexibility exercises at least 2–3 days a week (daily is most effective)
 - Epley worked examples.
 - Progression adds weight only after two qualifying sessions, rounds to the plate step, and drops after two failed sessions.
 - The plan never rises more than 8% a week outside recovery weeks.
+- Endurance stays on Monday to Wednesday.
+- Paused swimming moves its minutes to the long ride.
+- Swimming returns the Monday after 13 kg down, and stays.
 - Recovery weeks are lower.
 - Each taper week is 41–60% below the pre-taper base.
 - The cap follows a missed week.
-- Session minutes add up to the week's plan within rounding.
+- Session minutes add up to the week's plan within rounding, with swimming on or paused.
 
 ## 12. Stats hexagon
 

@@ -54,3 +54,15 @@ fun mmss(seconds: Long): String {
     val s = seconds.coerceAtLeast(0)
     return "${s / 60}:${(s % 60).toString().padStart(2, '0')}"
 }
+
+/** Where the swimming pause stands, for the Plan panel (D-77). */
+fun swimLine(s: SwimStatus, pauseKg: Double?, swimThisWeek: Boolean): String {
+    val day = java.time.format.DateTimeFormatter.ofPattern("EEE d MMM", java.util.Locale.getDefault())
+    return when {
+        pauseKg == null -> "On"
+        s.from != null -> (if (swimThisWeek) "Back since " else "Back from ") + s.from.format(day)
+        !s.tracked -> "Paused until ${kg(pauseKg)} kg down · set up Fuel to track it"
+        s.kgToGo != null -> "Paused · ${String.format(java.util.Locale.US, "%.1f", s.kgToGo)} kg to go"
+        else -> "Paused until ${kg(pauseKg)} kg down · weigh in to track it"
+    }
+}
