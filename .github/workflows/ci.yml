@@ -57,7 +57,8 @@ jobs:
           text = open("app/build/hang-dump.txt").read()
           for block in text.split("\n\n")[1:]:
               lines = block.strip().splitlines()
-              if lines and ('"Test worker"' in lines[0] or '"main"' in lines[0] or "Robolectric" in lines[0]):
+              if lines and ('"Test worker"' in lines[0] or '"main"' in lines[0] or "Robolectric" in lines[0]
+                            or "Main Thread" in lines[0]):
                   print("::error::" + " | ".join(l.strip() for l in lines[:22]))
           EOF
           fi
