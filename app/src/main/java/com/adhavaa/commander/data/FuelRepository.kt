@@ -190,17 +190,21 @@ class FoodCatalog(private val load: () -> List<Food>) {
     var error: String? = null
         private set
 
-    suspend fun foods(): List<Indexed> = cache ?: lock.withLock {
-        cache ?: try {
-            withContext(Dispatchers.IO) { index(load()) }.also {
-                cache = it
-                error = null
+    // The lock is taken and released on an IO thread, so a holder never needs the main thread to let go (a caller
+    // blocking the main thread can't deadlock against a load started from viewModelScope).
+    suspend fun foods(): List<Indexed> = cache ?: withContext(Dispatchers.IO) {
+        lock.withLock {
+            cache ?: try {
+                index(load()).also {
+                    cache = it
+                    error = null
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = "The food list couldn't load (${e.javaClass.simpleName}). Your own foods and quick add still work."
+                emptyList()
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            error = "The food list couldn't load (${e.javaClass.simpleName}). Your own foods and quick add still work."
-            emptyList()
         }
     }
 

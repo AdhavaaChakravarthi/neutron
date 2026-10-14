@@ -128,17 +128,20 @@ class ExerciseCatalog(private val load: () -> List<Exercise>) {
     /** Already loaded, or null. */
     fun loaded(): Map<String, Exercise>? = cache
 
-    suspend fun all(): Map<String, Exercise> = cache ?: lock.withLock {
-        cache ?: try {
-            withContext(Dispatchers.IO) { load().associateBy { it.id } }.also {
-                cache = it
-                error = null
+    // Locked on an IO thread, so a holder never needs the main thread to release it (see FoodCatalog).
+    suspend fun all(): Map<String, Exercise> = cache ?: withContext(Dispatchers.IO) {
+        lock.withLock {
+            cache ?: try {
+                load().associateBy { it.id }.also {
+                    cache = it
+                    error = null
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                error = "The exercise list couldn't load (${e.javaClass.simpleName})."
+                emptyMap()
             }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            error = "The exercise list couldn't load (${e.javaClass.simpleName})."
-            emptyMap()
         }
     }
 
